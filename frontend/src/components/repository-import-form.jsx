@@ -9,7 +9,7 @@ import { useImportRepository } from '@/hooks/use-import-repository'
 import { isValidGitHubUrl } from '@/lib/validate-github-url'
 import { ApiError } from '@/services/api-client'
 
-export function RepositoryImportForm() {
+export function RepositoryImportForm({ onViewAnalysis }) {
   const [githubUrl, setGithubUrl] = useState('')
   const [validationError, setValidationError] = useState(null)
   const { mutate, data, isPending, isSuccess, reset } = useImportRepository()
@@ -49,7 +49,10 @@ export function RepositoryImportForm() {
         <h2 className="card-title">Repository imported</h2>
         <p className="repo-name">{data.repository_name}</p>
         <p className="clone-path">{data.clone_path}</p>
-        <Button variant="outline" block className="mt-6" onClick={handleImportAnother}>
+        <Button block className="mt-6" onClick={onViewAnalysis}>
+          View Analysis
+        </Button>
+        <Button variant="outline" block className="mt-3" onClick={handleImportAnother}>
           Import another repository
         </Button>
       </Card>

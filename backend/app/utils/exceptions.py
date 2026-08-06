@@ -4,3 +4,11 @@ class InvalidGitHubURLError(Exception):
 
 class RepositoryCloneError(Exception):
     """Raised when cloning a repository fails."""
+
+
+class NoRepositoryImportedError(Exception):
+    """Raised when analysis is requested but no repository has been imported yet."""
+
+
+class RepositoryAnalysisError(Exception):
+    """Raised when a cloned repository cannot be analyzed."""

@@ -5,7 +5,7 @@ from pathlib import Path
 from git import GitCommandError, Repo
 
 from app.config.settings import settings
-from app.utils.exceptions import RepositoryCloneError
+from app.utils.exceptions import NoRepositoryImportedError, RepositoryCloneError
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +42,18 @@ class GitService:
             ) from exc
 
         return target_path
+
+    def get_latest_cloned_repository(self) -> Path:
+        """Return the most recently cloned repository's path, by mtime.
+
+        There's no persistence layer yet, so "most recent" is derived from
+        the filesystem itself rather than in-memory/session state — that
+        keeps it correct across server restarts and multiple workers.
+        """
+        candidates = [entry for entry in self.base_dir.iterdir() if entry.is_dir()]
+        if not candidates:
+            raise NoRepositoryImportedError("No repository has been imported yet.")
+        return max(candidates, key=lambda entry: entry.stat().st_mtime)
 
 
 git_service = GitService()

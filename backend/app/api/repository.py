@@ -1,8 +1,15 @@
 from fastapi import APIRouter, HTTPException
 
+from app.analyzer.repository_analyzer import RepositoryAnalyzer
+from app.models.analysis import AnalysisResponse
 from app.models.repository import RepositoryImportRequest, RepositoryImportResponse
 from app.services.git_service import git_service
-from app.utils.exceptions import InvalidGitHubURLError, RepositoryCloneError
+from app.utils.exceptions import (
+    InvalidGitHubURLError,
+    NoRepositoryImportedError,
+    RepositoryAnalysisError,
+    RepositoryCloneError,
+)
 from app.utils.validators import validate_github_url
 
 router = APIRouter(prefix="/repository", tags=["repository"])
@@ -25,3 +32,18 @@ def import_repository(payload: RepositoryImportRequest) -> RepositoryImportRespo
         clone_path=str(clone_path),
         status="success",
     )
+
+
+@router.get("/analyze", response_model=AnalysisResponse)
+def analyze_repository() -> AnalysisResponse:
+    try:
+        repository_path = git_service.get_latest_cloned_repository()
+    except NoRepositoryImportedError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    try:
+        result = RepositoryAnalyzer(repository_path).analyze()
+    except RepositoryAnalysisError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    return AnalysisResponse(**result.to_dict())
