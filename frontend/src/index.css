@@ -1,0 +1,261 @@
+:root {
+  --background: #0a0a0c;
+  --foreground: #e5e5ea;
+  --card: #111114;
+  --card-border: #1f1f24;
+  --muted: #8b8b95;
+  --accent: #6e7bf2;
+  --accent-hover: #808bf5;
+  --destructive: #f2555a;
+  --ring: #6e7bf2;
+  --success: #34d399;
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+}
+
+/* Layout */
+
+.app-shell {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  background-color: var(--background);
+}
+
+.app-glow {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(600px circle at 50% 0%, rgba(110, 123, 242, 0.12), transparent 70%);
+}
+
+.app-content {
+  position: relative;
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1.5rem 2rem;
+}
+
+.logo-mark {
+  display: flex;
+  height: 1.75rem;
+  width: 1.75rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.375rem;
+  background: var(--accent);
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #ffffff;
+}
+
+.logo-text {
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+}
+
+.app-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 1.5rem;
+}
+
+/* Card */
+
+.card {
+  width: 100%;
+  max-width: 28rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--card-border);
+  background: var(--card);
+  padding: 2rem;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.02);
+}
+
+.card-center {
+  text-align: center;
+}
+
+.card-title {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+}
+
+.card-subtitle {
+  margin: 0.375rem 0 0;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+/* Form */
+
+.import-form {
+  margin-top: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.input {
+  display: flex;
+  height: 2.75rem;
+  width: 100%;
+  border-radius: 0.375rem;
+  border: 1px solid var(--card-border);
+  background: var(--background);
+  padding: 0 0.875rem;
+  font-size: 0.875rem;
+  color: var(--foreground);
+  outline: none;
+  transition: box-shadow 0.15s, border-color 0.15s;
+}
+
+.input::placeholder {
+  color: var(--muted);
+}
+
+.input:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.input:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.input[aria-invalid='true'] {
+  border-color: var(--destructive);
+}
+
+.field-error {
+  margin: 0.5rem 0 0;
+  font-size: 0.875rem;
+  color: var(--destructive);
+}
+
+/* Buttons */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  white-space: nowrap;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  height: 2.5rem;
+  padding: 0 1rem;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background-color 0.15s, border-color 0.15s;
+}
+
+.btn:disabled {
+  pointer-events: none;
+  opacity: 0.5;
+}
+
+.btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--background), 0 0 0 4px var(--ring);
+}
+
+.btn-block {
+  width: 100%;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.btn-outline {
+  background: transparent;
+  border-color: var(--card-border);
+  color: var(--foreground);
+}
+
+.btn-outline:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.mt-6 {
+  margin-top: 1.5rem;
+}
+
+/* Spinner */
+
+.spinner {
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Success state */
+
+.success-icon-wrap {
+  margin: 0 auto 1rem;
+  display: flex;
+  height: 3rem;
+  width: 3rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.success-icon {
+  color: var(--success);
+}
+
+.repo-name {
+  margin: 0.375rem 0 0;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.clone-path {
+  margin: 0.25rem 0 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--muted);
+}
