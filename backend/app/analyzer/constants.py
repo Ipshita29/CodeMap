@@ -12,6 +12,7 @@ IGNORED_DIRS: set[str] = {
     "__pycache__",
     ".idea",
     ".vscode",
+    "coverage",
 }
 
 # Extensions we don't attempt to read as text (line counts and import

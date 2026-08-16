@@ -219,6 +219,10 @@ body {
   margin-top: 1.5rem;
 }
 
+.mb-6 {
+  margin-bottom: 1.5rem;
+}
+
 /* Spinner */
 
 .spinner {
@@ -374,4 +378,163 @@ body {
 
 .folder-tree li {
   margin: 0.25rem 0;
+}
+
+/* Code intelligence debug view */
+
+.button-row {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.select {
+  width: 100%;
+  max-width: 28rem;
+  height: 2.75rem;
+  border-radius: 0.375rem;
+  border: 1px solid var(--card-border);
+  background: var(--background);
+  color: var(--foreground);
+  padding: 0 0.875rem;
+  font-size: 0.875rem;
+  outline: none;
+}
+
+.select:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.file-inspector {
+  margin-top: 1.5rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: 1.5rem;
+}
+
+.inspector-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.inspector-list li {
+  font-size: 0.8125rem;
+  color: var(--foreground);
+  font-family: var(--font-mono);
+}
+
+/* Repository insights / AI chat */
+
+.mode-toggle {
+  display: inline-flex;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--card-border);
+  background: var(--card);
+  width: fit-content;
+}
+
+.mode-btn {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  padding: 0.375rem 0.875rem;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.mode-btn:hover {
+  color: var(--foreground);
+}
+
+.mode-btn-active {
+  background: var(--accent);
+  color: #ffffff;
+}
+
+.mode-btn-active:hover {
+  color: #ffffff;
+}
+
+.summary-text {
+  margin: 1rem 0 0;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--foreground);
+  white-space: pre-wrap;
+}
+
+.sources {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--card-border);
+}
+
+.sources-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.sources-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.source-link {
+  border: none;
+  background: none;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--accent);
+  cursor: pointer;
+  text-align: left;
+}
+
+.source-link:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
+}
+
+.conversation-list {
+  margin-top: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.conversation-entry {
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--card-border);
+}
+
+.conversation-question {
+  margin: 0 0 0.5rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.conversation-answer {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--foreground);
+  white-space: pre-wrap;
 }

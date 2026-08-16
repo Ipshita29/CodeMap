@@ -4,3 +4,6 @@ __pycache__/
 .env
 cloned_repos/*
 !cloned_repos/.gitkeep
+analysis/*
+!analysis/.gitkeep
+.pytest_cache/

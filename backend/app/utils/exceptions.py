@@ -12,3 +12,15 @@ class NoRepositoryImportedError(Exception):
 
 class RepositoryAnalysisError(Exception):
     """Raised when a cloned repository cannot be analyzed."""
+
+
+class AIServiceError(Exception):
+    """Base class for AI service failures."""
+
+
+class AIServiceNotConfiguredError(AIServiceError):
+    """Raised when no OpenAI API key is configured."""
+
+
+class AIRequestTimeoutError(AIServiceError):
+    """Raised when a request to the AI provider times out."""
