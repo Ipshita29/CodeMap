@@ -538,3 +538,143 @@ body {
   color: var(--foreground);
   white-space: pre-wrap;
 }
+
+/* Architecture / graph view */
+
+.architecture-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.architecture-search {
+  flex: 1;
+  min-width: 12rem;
+  max-width: 20rem;
+}
+
+.filter-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  flex-wrap: wrap;
+}
+
+.filter-group-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-right: 0.25rem;
+}
+
+.filter-chip {
+  border: 1px solid var(--card-border);
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.3rem 0.7rem;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.filter-chip:hover {
+  color: var(--foreground);
+  border-color: var(--accent);
+}
+
+.filter-chip-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+.architecture-banner {
+  border-radius: 0.5rem;
+  border: 1px solid var(--card-border);
+  background: rgba(110, 123, 242, 0.08);
+  padding: 0.75rem 1rem;
+  font-size: 0.8125rem;
+  color: var(--foreground);
+}
+
+.architecture-layout {
+  display: grid;
+  grid-template-columns: 13rem minmax(0, 1fr) 18rem;
+  gap: 1rem;
+  height: 36rem;
+}
+
+.architecture-sidebar {
+  overflow-y: auto;
+  border-radius: 0.75rem;
+  border: 1px solid var(--card-border);
+  background: var(--card);
+  padding: 1rem;
+}
+
+.architecture-sidebar-title {
+  margin: 0 0 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.file-tree,
+.file-tree ul {
+  list-style: none;
+  margin: 0;
+  padding-left: 0.9rem;
+}
+
+.file-tree {
+  padding-left: 0;
+}
+
+.file-tree li {
+  margin: 0.125rem 0;
+}
+
+.file-tree-folder {
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
+.file-tree-item {
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: 0.8125rem;
+  color: var(--foreground);
+  cursor: pointer;
+  text-align: left;
+}
+
+.file-tree-item:hover {
+  color: var(--accent);
+}
+
+.file-tree-item-active {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+@media (max-width: 60rem) {
+  .architecture-layout {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .architecture-sidebar,
+  .repository-graph,
+  .file-details-panel {
+    height: 20rem;
+  }
+}

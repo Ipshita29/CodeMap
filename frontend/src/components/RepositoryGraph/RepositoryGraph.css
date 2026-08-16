@@ -1,0 +1,96 @@
+.repository-graph {
+  position: relative;
+  height: 100%;
+  min-height: 32rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--card-border);
+  background: var(--background);
+  overflow: hidden;
+}
+
+.repository-graph .react-flow__attribution {
+  display: none;
+}
+
+.repository-graph .react-flow__controls {
+  border-radius: 0.5rem;
+  overflow: hidden;
+  border: 1px solid var(--card-border);
+  box-shadow: none;
+}
+
+.repository-graph .react-flow__controls-button {
+  background: var(--card);
+  border-bottom: 1px solid var(--card-border);
+  fill: var(--foreground);
+  color: var(--foreground);
+}
+
+.repository-graph .react-flow__controls-button:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.graph-minimap {
+  background: var(--card) !important;
+  border-radius: 0.5rem;
+  border: 1px solid var(--card-border);
+}
+
+.graph-node {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 150px;
+  max-width: 190px;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--card-border);
+  background: var(--card);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: border-color 0.15s, opacity 0.15s, transform 0.15s;
+}
+
+.graph-node:hover {
+  border-color: var(--accent);
+}
+
+.graph-node-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--foreground);
+  font-weight: 500;
+}
+
+.graph-node-meta {
+  font-size: 0.6875rem;
+  color: var(--muted);
+}
+
+.graph-node-file {
+  border-left: 3px solid var(--accent);
+}
+
+.graph-node-folder {
+  border-left: 3px solid var(--muted);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.graph-node-external {
+  border-left: 3px solid var(--success);
+  border-style: dashed;
+}
+
+.graph-node-selected {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.graph-node-dimmed {
+  opacity: 0.25;
+}
+
+.repository-graph .react-flow__handle {
+  opacity: 0;
+}

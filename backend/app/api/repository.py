@@ -1,8 +1,10 @@
 from fastapi import APIRouter, HTTPException
 
 from app.analyzer.repository_analyzer import RepositoryAnalyzer
+from app.graph.graph_service import build_repository_graph
 from app.models.analysis import AnalysisResponse
 from app.models.code_intelligence import CodeAnalysisSummaryResponse, CodeIntelligenceResponse
+from app.models.graph import GraphResponse
 from app.models.repository import RepositoryImportRequest, RepositoryImportResponse
 from app.services.analysis_storage import analysis_storage
 from app.services.code_intelligence_service import run_and_store_code_intelligence
@@ -96,3 +98,13 @@ def get_code_intelligence() -> CodeIntelligenceResponse:
             detail="No code intelligence analysis found. Run POST /repository/analyze-code first.",
         )
     return CodeIntelligenceResponse(**data)
+
+
+@router.get("/graph", response_model=GraphResponse)
+def get_repository_graph(focus: str | None = None) -> GraphResponse:
+    try:
+        return build_repository_graph(focus=focus)
+    except NoRepositoryImportedError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RepositoryAnalysisError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc

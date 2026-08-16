@@ -1,8 +1,296 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
-import { ApiError, fetchCodeIntelligence, fetchRepositoryAnalysis, runCodeAnalysis } from '@/api'
+import { RepositoryGraph } from '@/components/RepositoryGraph/RepositoryGraph'
+import { FileDetailsPanel } from '@/components/FileDetailsPanel'
+import {
+  ApiError,
+  askRepositoryQuestion,
+  fetchCodeIntelligence,
+  fetchRepositoryAnalysis,
+  fetchRepositoryGraph,
+  runCodeAnalysis,
+} from '@/api'
+
+function errorMessage(error) {
+  return error instanceof ApiError ? error.message : 'Something went wrong. Please try again.'
+}
+
+const NODE_TYPE_FILTERS = [
+  { id: 'all', label: 'All' },
+  { id: 'file', label: 'Files' },
+  { id: 'folder', label: 'Folders' },
+  { id: 'external', label: 'External' },
+]
+
+const MODE_PRESETS = {
+  architecture: { relationshipFilter: { imports: true, calls: false }, direction: 'TB' },
+  dependencies: { relationshipFilter: { imports: true, calls: true }, direction: 'LR' },
+}
+
+function buildFileTree(paths) {
+  const root = {}
+  for (const path of paths) {
+    const parts = path.split('/')
+    let cursor = root
+    parts.forEach((part, index) => {
+      cursor[part] ??= { name: part, path: parts.slice(0, index + 1).join('/'), isFile: index === parts.length - 1 }
+      if (index < parts.length - 1) {
+        cursor[part].children ??= {}
+      }
+      cursor = cursor[part].children ?? cursor
+    })
+  }
+  return root
+}
+
+function FileTree({ nodes, selectedPath, onSelect }) {
+  const entries = Object.values(nodes).sort(
+    (a, b) => Number(a.isFile) - Number(b.isFile) || a.name.localeCompare(b.name),
+  )
+
+  return (
+    <ul className="file-tree">
+      {entries.map((entry) => (
+        <li key={entry.path}>
+          {entry.isFile ? (
+            <button
+              type="button"
+              className={`file-tree-item${entry.path === selectedPath ? ' file-tree-item-active' : ''}`}
+              onClick={() => onSelect(entry.path)}
+            >
+              {entry.name}
+            </button>
+          ) : (
+            <>
+              <span className="file-tree-folder">{entry.name}</span>
+              {entry.children && <FileTree nodes={entry.children} selectedPath={selectedPath} onSelect={onSelect} />}
+            </>
+          )}
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+function ArchitectureTab() {
+  const [mode, setMode] = useState('architecture')
+  const [focus, setFocus] = useState(null)
+  const [search, setSearch] = useState('')
+  const [typeFilter, setTypeFilter] = useState('all')
+  const [relationshipFilter, setRelationshipFilter] = useState(MODE_PRESETS.architecture.relationshipFilter)
+  const [selectedNode, setSelectedNode] = useState(null)
+  const [fitSignal, setFitSignal] = useState(0)
+  const [centerRequest, setCenterRequest] = useState(null)
+
+  const graphQuery = useQuery({
+    queryKey: ['repository-graph', focus],
+    queryFn: () => fetchRepositoryGraph({ focus }),
+  })
+
+  // Only fetch once the graph call has succeeded: /repository/graph builds and
+  // stores code intelligence on demand, so this is guaranteed to exist by then
+  // instead of racing a second on-demand build.
+  const intelligenceQuery = useQuery({
+    queryKey: ['code-intelligence'],
+    queryFn: fetchCodeIntelligence,
+    retry: false,
+    enabled: graphQuery.isSuccess,
+  })
+
+  const explain = useMutation({ mutationFn: askRepositoryQuestion })
+
+  function handleModeChange(nextMode) {
+    setMode(nextMode)
+    setRelationshipFilter(MODE_PRESETS[nextMode].relationshipFilter)
+  }
+
+  function handleExplain(path) {
+    explain.mutate(
+      { question: `Explain the purpose and implementation of the file ${path}.`, mode: 'developer' },
+      { onError: (error) => toast.error('Could not explain file', { description: errorMessage(error) }) },
+    )
+  }
+
+  function selectNode(node) {
+    setSelectedNode(node)
+    explain.reset()
+  }
+
+  function handleGraphNodeClick(rfNode) {
+    const original = graphQuery.data.nodes.find((node) => node.id === rfNode.id)
+    if (!original) return
+    selectNode(original)
+    if (original.type === 'folder') {
+      setFocus(original.id)
+    }
+  }
+
+  function handleTreeSelect(path) {
+    const original = graphQuery.data?.nodes.find((node) => node.id === path)
+    if (!original) return
+    selectNode(original)
+    setCenterRequest({ nodeId: path, key: Date.now() })
+  }
+
+  function handleReset() {
+    setFocus(null)
+    setSearch('')
+    setTypeFilter('all')
+    setRelationshipFilter(MODE_PRESETS[mode].relationshipFilter)
+    setSelectedNode(null)
+    explain.reset()
+  }
+
+  const rawNodes = graphQuery.data?.nodes ?? []
+  const rawEdges = graphQuery.data?.edges ?? []
+
+  const filteredNodes = useMemo(
+    () => rawNodes.filter((node) => typeFilter === 'all' || node.type === typeFilter),
+    [rawNodes, typeFilter],
+  )
+  const filteredNodeIds = useMemo(() => new Set(filteredNodes.map((node) => node.id)), [filteredNodes])
+  const filteredEdges = useMemo(
+    () =>
+      rawEdges.filter(
+        (edge) => relationshipFilter[edge.type] && filteredNodeIds.has(edge.source) && filteredNodeIds.has(edge.target),
+      ),
+    [rawEdges, relationshipFilter, filteredNodeIds],
+  )
+
+  const highlightedIds = useMemo(() => {
+    const term = search.trim().toLowerCase()
+    if (!term) return null
+    const matched = new Set(
+      filteredNodes
+        .filter((node) => node.data.label.toLowerCase().includes(term) || (node.data.path ?? '').toLowerCase().includes(term))
+        .map((node) => node.id),
+    )
+    filteredEdges.forEach((edge) => {
+      if (matched.has(edge.source)) matched.add(edge.target)
+      if (matched.has(edge.target)) matched.add(edge.source)
+    })
+    return matched
+  }, [search, filteredNodes, filteredEdges])
+
+  const fileTree = useMemo(
+    () => buildFileTree(rawNodes.filter((node) => node.type === 'file').map((node) => node.data.path)),
+    [rawNodes],
+  )
+
+  if (graphQuery.isPending) {
+    return (
+      <div className="panel">
+        <p className="card-subtitle">Building repository graph…</p>
+      </div>
+    )
+  }
+
+  if (graphQuery.isError) {
+    return (
+      <div className="panel">
+        <h2 className="panel-title">Could not load graph</h2>
+        <p className="card-subtitle">{graphQuery.error.message}</p>
+      </div>
+    )
+  }
+
+  return (
+    <>
+      <div className="architecture-toolbar">
+        <div className="mode-toggle">
+          <button
+            type="button"
+            className={mode === 'architecture' ? 'mode-btn mode-btn-active' : 'mode-btn'}
+            onClick={() => handleModeChange('architecture')}
+          >
+            Architecture
+          </button>
+          <button
+            type="button"
+            className={mode === 'dependencies' ? 'mode-btn mode-btn-active' : 'mode-btn'}
+            onClick={() => handleModeChange('dependencies')}
+          >
+            Dependencies
+          </button>
+        </div>
+
+        <input
+          className="input architecture-search"
+          type="text"
+          placeholder="Search files or functions…"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+        />
+
+        <div className="filter-group">
+          <span className="filter-group-label">Show</span>
+          {NODE_TYPE_FILTERS.map((filter) => (
+            <button
+              key={filter.id}
+              type="button"
+              className={`filter-chip${typeFilter === filter.id ? ' filter-chip-active' : ''}`}
+              onClick={() => setTypeFilter(filter.id)}
+            >
+              {filter.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="filter-group">
+          <span className="filter-group-label">Relationships</span>
+          {['imports', 'calls'].map((type) => (
+            <button
+              key={type}
+              type="button"
+              className={`filter-chip${relationshipFilter[type] ? ' filter-chip-active' : ''}`}
+              onClick={() => setRelationshipFilter((prev) => ({ ...prev, [type]: !prev[type] }))}
+            >
+              {type === 'imports' ? 'Imports' : 'Calls'}
+            </button>
+          ))}
+        </div>
+
+        <div className="button-row">
+          <button type="button" className="btn btn-outline" onClick={() => setFitSignal((n) => n + 1)}>
+            Fit Graph
+          </button>
+          <button type="button" className="btn btn-outline" onClick={handleReset}>
+            Reset
+          </button>
+        </div>
+      </div>
+
+      {graphQuery.data.truncated && <div className="architecture-banner">{graphQuery.data.message}</div>}
+
+      <div className="architecture-layout">
+        <div className="architecture-sidebar">
+          <p className="architecture-sidebar-title">Files</p>
+          <FileTree nodes={fileTree} selectedPath={selectedNode?.data?.path} onSelect={handleTreeSelect} />
+        </div>
+
+        <RepositoryGraph
+          nodes={filteredNodes}
+          edges={filteredEdges}
+          direction={MODE_PRESETS[mode].direction}
+          selectedNodeId={selectedNode?.id}
+          highlightedIds={highlightedIds}
+          onNodeClick={handleGraphNodeClick}
+          fitSignal={fitSignal}
+          centerRequest={centerRequest}
+        />
+
+        <FileDetailsPanel
+          node={selectedNode}
+          intelligence={intelligenceQuery.data}
+          onExplain={handleExplain}
+          explain={explain}
+        />
+      </div>
+    </>
+  )
+}
 
 function FolderTreeView({ tree }) {
   const entries = Object.entries(tree)
@@ -366,6 +654,13 @@ export function AnalysisPage({ onBack, onViewInsights }) {
               </button>
               <button
                 type="button"
+                className={tab === 'architecture' ? 'mode-btn mode-btn-active' : 'mode-btn'}
+                onClick={() => setTab('architecture')}
+              >
+                Architecture
+              </button>
+              <button
+                type="button"
                 className={tab === 'code-intelligence' ? 'mode-btn mode-btn-active' : 'mode-btn'}
                 onClick={() => setTab('code-intelligence')}
               >
@@ -373,7 +668,9 @@ export function AnalysisPage({ onBack, onViewInsights }) {
               </button>
             </div>
 
-            {tab === 'overview' ? <OverviewTab data={data} /> : <CodeIntelligenceTab />}
+            {tab === 'overview' && <OverviewTab data={data} />}
+            {tab === 'architecture' && <ArchitectureTab />}
+            {tab === 'code-intelligence' && <CodeIntelligenceTab />}
           </div>
         </main>
       </div>

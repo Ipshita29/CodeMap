@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     analysis_output_dir: Path = BACKEND_ROOT / "analysis"
     cors_origins: list[str] = ["http://localhost:5173"]
     max_parseable_file_size_bytes: int = 500_000
+    graph_max_file_nodes: int = 150
 
     openai_api_key: str | None = None
     openai_model: str = "gpt-4o-mini"
