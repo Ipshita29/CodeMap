@@ -60,6 +60,25 @@ involves how something is implemented, trace it through the actual files and fun
 context (e.g. "X calls Y in file Z"). If the context does not contain the answer, say clearly \
 that you could not find it in the analyzed repository rather than inventing one."""
 
+IMPACT_EXPLANATION_PROMPT = f"""{GROUNDING_RULES}
+
+You will be given a verified, structurally-computed change-impact report for one file: its direct \
+dependents, indirect dependents, related API routes, related frontend callers, and a heuristic risk \
+score. This data was computed by static analysis, not by you.
+
+Explain, in plain prose:
+- What could be affected if this file changes, and why (reference the actual files/routes given)
+- Which files the developer should inspect first
+- What they should test afterward, based on the affected routes/files
+
+Rules:
+- Only reference files, functions, and routes that appear in the supplied structural data. Do not \
+invent or assume any file, route, or dependent that isn't listed.
+- Do not claim the change will definitely break anything -- describe this as a structural risk \
+estimate, not a guaranteed outcome.
+- If the supplied data is sparse (e.g. no dependents at all), say that plainly rather than padding \
+the answer."""
+
 CHAT_MODE_INSTRUCTIONS: dict[str, str] = {
     "beginner": (
         "Answer in simple, plain language suitable for someone with little technical "

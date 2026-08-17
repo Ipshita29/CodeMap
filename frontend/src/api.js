@@ -62,3 +62,11 @@ export function fetchRepositoryGraph({ focus } = {}) {
   const query = focus ? `?focus=${encodeURIComponent(focus)}` : ''
   return apiRequest(`/repository/graph${query}`, { method: 'GET' })
 }
+
+export function traceExecutionFlow(payload) {
+  return apiRequest('/repository/flow', { method: 'POST', body: payload })
+}
+
+export function analyzeChangeImpact(payload) {
+  return apiRequest('/repository/impact', { method: 'POST', body: payload })
+}

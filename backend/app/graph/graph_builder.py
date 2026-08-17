@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import posixpath
 
+from app.graph.relationship_index import RelationshipIndex
 from app.models.graph import GraphEdge, GraphNode, GraphNodeData, GraphResponse
 
 FRONTEND_MARKERS = {"frontend", "client", "web"}
@@ -23,37 +24,25 @@ FileEdgeKey = tuple[str, str, str]  # (source_path, target_path, edge_type)
 ExternalEdgeKey = tuple[str, str]  # (file_path, external_node_id)
 
 
-def _external_package_name(source: str, language: str) -> str:
-    if source.startswith("@"):
-        parts = source.split("/")
-        return "/".join(parts[:2]) if len(parts) >= 2 else source
-    if language == "Python":
-        return source.split(".")[0]
-    return source.split("/")[0]
-
-
-def _symbol_file(symbol_id: str) -> str:
-    return symbol_id.split("::", 1)[0]
-
-
 def _top_level_folder(path: str) -> str:
     return path.split("/", 1)[0] if "/" in path else ROOT_FOLDER_ID
 
 
 class GraphBuilder:
-    def __init__(self, day2_files: list[dict], intelligence: dict, max_file_nodes: int):
+    def __init__(self, day2_files: list[dict], intelligence: dict, max_file_nodes: int, index: RelationshipIndex | None = None):
         self.day2_files = day2_files
         self.intelligence = intelligence
         self.max_file_nodes = max_file_nodes
+        self.index = index or RelationshipIndex(intelligence)
 
     def build(self, focus: str | None = None) -> GraphResponse:
         lines_by_path = {f["path"]: f["lines"] for f in self.day2_files}
-        intel_files = {f["path"]: f for f in self.intelligence["files"]}
+        intel_files = self.index.files_by_path
         file_paths = list(intel_files.keys())
         total_files = len(file_paths)
 
         layer_by_path = self._guess_layers(file_paths)
-        file_edges, external_by_file = self._collect_file_level_edges(intel_files)
+        file_edges, external_by_file = self.index.file_edges, self.index.external_by_file
 
         if focus:
             scoped = self._scope_to_focus(focus, file_paths, file_edges)
@@ -92,45 +81,6 @@ class GraphBuilder:
         return GraphResponse(
             nodes=nodes, edges=edges, mode="files", truncated=False, total_files=total_files, message=None
         )
-
-    # -- relationship collection --------------------------------------
-
-    def _collect_file_level_edges(
-        self, intel_files: dict[str, dict]
-    ) -> tuple[dict[FileEdgeKey, int], dict[ExternalEdgeKey, dict]]:
-        file_paths = set(intel_files.keys())
-        file_edges: dict[FileEdgeKey, int] = {}
-
-        for rel in self.intelligence["relationships"]:
-            rel_type = rel["type"]
-            if rel_type == "imports":
-                source, target = rel["source"], rel["target"]
-                if target and source in file_paths and target in file_paths and source != target:
-                    key = (source, target, "imports")
-                    file_edges[key] = file_edges.get(key, 0) + 1
-            elif rel_type == "calls":
-                if not rel.get("resolved") or not rel.get("target"):
-                    continue
-                source_file = _symbol_file(rel["source"])
-                target_file = _symbol_file(rel["target"])
-                if source_file != target_file and source_file in file_paths and target_file in file_paths:
-                    key = (source_file, target_file, "calls")
-                    file_edges[key] = file_edges.get(key, 0) + 1
-
-        external_by_file: dict[ExternalEdgeKey, dict] = {}
-        for imp in self.intelligence["imports"]:
-            if not imp["is_external"]:
-                continue
-            file = imp["file"]
-            if file not in file_paths:
-                continue
-            language = intel_files[file]["language"]
-            package = _external_package_name(imp["source"], language)
-            key = (file, f"external:{package}")
-            entry = external_by_file.setdefault(key, {"weight": 0, "label": package})
-            entry["weight"] += 1
-
-        return file_edges, external_by_file
 
     # -- layer heuristics -----------------------------------------------
 

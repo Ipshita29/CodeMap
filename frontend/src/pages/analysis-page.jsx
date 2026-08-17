@@ -5,12 +5,14 @@ import { toast } from 'sonner'
 import { RepositoryGraph } from '@/components/RepositoryGraph/RepositoryGraph'
 import { FileDetailsPanel } from '@/components/FileDetailsPanel'
 import {
+  analyzeChangeImpact,
   ApiError,
   askRepositoryQuestion,
   fetchCodeIntelligence,
   fetchRepositoryAnalysis,
   fetchRepositoryGraph,
   runCodeAnalysis,
+  traceExecutionFlow,
 } from '@/api'
 
 function errorMessage(error) {
@@ -24,9 +26,60 @@ const NODE_TYPE_FILTERS = [
   { id: 'external', label: 'External' },
 ]
 
+const MODE_LABELS = {
+  architecture: 'Architecture',
+  dependencies: 'Dependencies',
+  flow: 'Execution Flow',
+  impact: 'Impact Analysis',
+}
+
 const MODE_PRESETS = {
   architecture: { relationshipFilter: { imports: true, calls: false }, direction: 'TB' },
   dependencies: { relationshipFilter: { imports: true, calls: true }, direction: 'LR' },
+}
+
+function flowNodeToGraphNode(n) {
+  return { id: n.id, type: n.type, data: { label: n.name, path: n.path, method: n.method } }
+}
+
+function flowToGraphData(flowResult) {
+  if (!flowResult) return { nodes: [], edges: [] }
+  return {
+    nodes: flowResult.flow.map(flowNodeToGraphNode),
+    edges: flowResult.relationships.map((r, i) => ({
+      id: `flow-${i}-${r.source}-${r.target}`,
+      source: r.source,
+      target: r.target,
+      type: r.type,
+      weight: 1,
+      confidence: r.confidence,
+    })),
+  }
+}
+
+function impactFileNode(path, impact) {
+  return { id: path, type: 'file', data: { label: path.split('/').pop(), path, impact } }
+}
+
+function impactToGraphData(impactResult) {
+  if (!impactResult) return { nodes: [], edges: [] }
+  const nodes = [impactFileNode(impactResult.file, 'target')]
+  const edges = []
+  for (const dep of [...impactResult.direct_dependents, ...impactResult.indirect_dependents]) {
+    nodes.push(impactFileNode(dep.path, dep.depth === 1 ? 'direct' : 'indirect'))
+    // Edge points from what changed toward its dependent, so the changed
+    // file lands at the top of a top-down layout, matching "if X changes it affects Y".
+    dep.via.forEach((type) => {
+      edges.push({
+        id: `impact-${dep.discovered_via}-${dep.path}-${type}`,
+        source: dep.discovered_via,
+        target: dep.path,
+        type,
+        weight: 1,
+      })
+    })
+  }
+  return { nodes, edges }
 }
 
 function buildFileTree(paths) {
@@ -83,6 +136,8 @@ function ArchitectureTab() {
   const [selectedNode, setSelectedNode] = useState(null)
   const [fitSignal, setFitSignal] = useState(0)
   const [centerRequest, setCenterRequest] = useState(null)
+  const [flowQuery, setFlowQuery] = useState('')
+  const [flowFunction, setFlowFunction] = useState('')
 
   const graphQuery = useQuery({
     queryKey: ['repository-graph', focus],
@@ -100,10 +155,12 @@ function ArchitectureTab() {
   })
 
   const explain = useMutation({ mutationFn: askRepositoryQuestion })
+  const flow = useMutation({ mutationFn: traceExecutionFlow })
+  const impact = useMutation({ mutationFn: analyzeChangeImpact })
 
   function handleModeChange(nextMode) {
     setMode(nextMode)
-    setRelationshipFilter(MODE_PRESETS[nextMode].relationshipFilter)
+    if (MODE_PRESETS[nextMode]) setRelationshipFilter(MODE_PRESETS[nextMode].relationshipFilter)
   }
 
   function handleExplain(path) {
@@ -118,11 +175,44 @@ function ArchitectureTab() {
     explain.reset()
   }
 
+  function handleTraceFlow() {
+    const trimmedQuery = flowQuery.trim()
+    const payload = trimmedQuery
+      ? { query: trimmedQuery }
+      : selectedNode?.type === 'file'
+        ? { start_file: selectedNode.data.path, start_function: flowFunction.trim() || undefined }
+        : null
+
+    if (!payload) {
+      toast.error('Select a file in the tree, or describe a feature to trace.')
+      return
+    }
+
+    flow.mutate(payload, {
+      onSuccess: (data) => selectNode(flowNodeToGraphNode(data.start)),
+      onError: (error) => toast.error('Could not trace flow', { description: errorMessage(error) }),
+    })
+  }
+
+  function handleAnalyzeImpact() {
+    if (selectedNode?.type !== 'file') {
+      toast.error('Select a file in the tree first.')
+      return
+    }
+    impact.mutate(
+      { file: selectedNode.data.path },
+      {
+        onSuccess: (data) => selectNode(impactFileNode(data.file, 'target')),
+        onError: (error) => toast.error('Could not analyze impact', { description: errorMessage(error) }),
+      },
+    )
+  }
+
   function handleGraphNodeClick(rfNode) {
-    const original = graphQuery.data.nodes.find((node) => node.id === rfNode.id)
+    const original = displayedNodes.find((node) => node.id === rfNode.id)
     if (!original) return
     selectNode(original)
-    if (original.type === 'folder') {
+    if (original.type === 'folder' && (mode === 'architecture' || mode === 'dependencies')) {
       setFocus(original.id)
     }
   }
@@ -138,8 +228,12 @@ function ArchitectureTab() {
     setFocus(null)
     setSearch('')
     setTypeFilter('all')
-    setRelationshipFilter(MODE_PRESETS[mode].relationshipFilter)
+    if (MODE_PRESETS[mode]) setRelationshipFilter(MODE_PRESETS[mode].relationshipFilter)
     setSelectedNode(null)
+    setFlowQuery('')
+    setFlowFunction('')
+    flow.reset()
+    impact.reset()
     explain.reset()
   }
 
@@ -160,6 +254,7 @@ function ArchitectureTab() {
   )
 
   const highlightedIds = useMemo(() => {
+    if (mode !== 'architecture' && mode !== 'dependencies') return null
     const term = search.trim().toLowerCase()
     if (!term) return null
     const matched = new Set(
@@ -172,12 +267,19 @@ function ArchitectureTab() {
       if (matched.has(edge.target)) matched.add(edge.source)
     })
     return matched
-  }, [search, filteredNodes, filteredEdges])
+  }, [mode, search, filteredNodes, filteredEdges])
 
   const fileTree = useMemo(
     () => buildFileTree(rawNodes.filter((node) => node.type === 'file').map((node) => node.data.path)),
     [rawNodes],
   )
+
+  const flowGraph = useMemo(() => flowToGraphData(flow.data), [flow.data])
+  const impactGraph = useMemo(() => impactToGraphData(impact.data), [impact.data])
+
+  const displayedNodes = mode === 'flow' ? flowGraph.nodes : mode === 'impact' ? impactGraph.nodes : filteredNodes
+  const displayedEdges = mode === 'flow' ? flowGraph.edges : mode === 'impact' ? impactGraph.edges : filteredEdges
+  const direction = MODE_PRESETS[mode]?.direction ?? 'TB'
 
   if (graphQuery.isPending) {
     return (
@@ -200,57 +302,88 @@ function ArchitectureTab() {
     <>
       <div className="architecture-toolbar">
         <div className="mode-toggle">
-          <button
-            type="button"
-            className={mode === 'architecture' ? 'mode-btn mode-btn-active' : 'mode-btn'}
-            onClick={() => handleModeChange('architecture')}
-          >
-            Architecture
-          </button>
-          <button
-            type="button"
-            className={mode === 'dependencies' ? 'mode-btn mode-btn-active' : 'mode-btn'}
-            onClick={() => handleModeChange('dependencies')}
-          >
-            Dependencies
-          </button>
-        </div>
-
-        <input
-          className="input architecture-search"
-          type="text"
-          placeholder="Search files or functions…"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-        />
-
-        <div className="filter-group">
-          <span className="filter-group-label">Show</span>
-          {NODE_TYPE_FILTERS.map((filter) => (
+          {Object.keys(MODE_LABELS).map((m) => (
             <button
-              key={filter.id}
+              key={m}
               type="button"
-              className={`filter-chip${typeFilter === filter.id ? ' filter-chip-active' : ''}`}
-              onClick={() => setTypeFilter(filter.id)}
+              className={mode === m ? 'mode-btn mode-btn-active' : 'mode-btn'}
+              onClick={() => handleModeChange(m)}
             >
-              {filter.label}
+              {MODE_LABELS[m]}
             </button>
           ))}
         </div>
 
-        <div className="filter-group">
-          <span className="filter-group-label">Relationships</span>
-          {['imports', 'calls'].map((type) => (
-            <button
-              key={type}
-              type="button"
-              className={`filter-chip${relationshipFilter[type] ? ' filter-chip-active' : ''}`}
-              onClick={() => setRelationshipFilter((prev) => ({ ...prev, [type]: !prev[type] }))}
-            >
-              {type === 'imports' ? 'Imports' : 'Calls'}
+        {(mode === 'architecture' || mode === 'dependencies') && (
+          <>
+            <input
+              className="input architecture-search"
+              type="text"
+              placeholder="Search files or functions…"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+
+            <div className="filter-group">
+              <span className="filter-group-label">Show</span>
+              {NODE_TYPE_FILTERS.map((filter) => (
+                <button
+                  key={filter.id}
+                  type="button"
+                  className={`filter-chip${typeFilter === filter.id ? ' filter-chip-active' : ''}`}
+                  onClick={() => setTypeFilter(filter.id)}
+                >
+                  {filter.label}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+
+        {mode === 'flow' && (
+          <>
+            <input
+              className="input architecture-search"
+              type="text"
+              placeholder="Describe a feature, e.g. authentication…"
+              value={flowQuery}
+              onChange={(event) => setFlowQuery(event.target.value)}
+            />
+            <input
+              className="input architecture-search"
+              type="text"
+              placeholder="Start function (optional)"
+              value={flowFunction}
+              onChange={(event) => setFlowFunction(event.target.value)}
+              disabled={Boolean(flowQuery.trim())}
+            />
+            <button type="button" className="btn btn-primary" onClick={handleTraceFlow} disabled={flow.isPending}>
+              {flow.isPending ? 'Tracing…' : 'Trace Flow'}
             </button>
-          ))}
-        </div>
+          </>
+        )}
+
+        {mode === 'impact' && (
+          <button type="button" className="btn btn-primary" onClick={handleAnalyzeImpact} disabled={impact.isPending}>
+            {impact.isPending ? 'Analyzing…' : 'Analyze Impact'}
+          </button>
+        )}
+
+        {(mode === 'architecture' || mode === 'dependencies') && (
+          <div className="filter-group">
+            <span className="filter-group-label">Relationships</span>
+            {['imports', 'calls'].map((type) => (
+              <button
+                key={type}
+                type="button"
+                className={`filter-chip${relationshipFilter[type] ? ' filter-chip-active' : ''}`}
+                onClick={() => setRelationshipFilter((prev) => ({ ...prev, [type]: !prev[type] }))}
+              >
+                {type === 'imports' ? 'Imports' : 'Calls'}
+              </button>
+            ))}
+          </div>
+        )}
 
         <div className="button-row">
           <button type="button" className="btn btn-outline" onClick={() => setFitSignal((n) => n + 1)}>
@@ -262,7 +395,45 @@ function ArchitectureTab() {
         </div>
       </div>
 
-      {graphQuery.data.truncated && <div className="architecture-banner">{graphQuery.data.message}</div>}
+      {(mode === 'architecture' || mode === 'dependencies') && graphQuery.data.truncated && (
+        <div className="architecture-banner">{graphQuery.data.message}</div>
+      )}
+
+      {mode === 'flow' && flow.isError && (
+        <div className="architecture-banner">{errorMessage(flow.error)}</div>
+      )}
+      {mode === 'flow' && flow.data?.message && <div className="architecture-banner">{flow.data.message}</div>}
+      {mode === 'flow' && !flow.data && !flow.isPending && !flow.isError && (
+        <div className="architecture-banner">
+          Select a file in the file tree (or describe a feature above) and click &ldquo;Trace Flow&rdquo;.
+        </div>
+      )}
+
+      {mode === 'impact' && impact.data && (
+        <div className="panel impact-report">
+          <div className="impact-report-header">
+            <h2 className="panel-title">Impact of changing {impact.data.file}</h2>
+            <span className={`risk-badge risk-${impact.data.risk.level}`}>
+              {impact.data.risk.level.toUpperCase()} · {impact.data.risk.score}
+            </span>
+          </div>
+          <p className="card-subtitle">
+            {impact.data.direct_dependents.length} direct dependent(s), {impact.data.indirect_dependents.length}{' '}
+            indirect dependent(s)
+            {impact.data.related_routes.length > 0 ? `, ${impact.data.related_routes.length} related route(s)` : ''}
+            {impact.data.related_files.length > 0 ? `, ${impact.data.related_files.length} related frontend file(s)` : ''}.
+          </p>
+          {impact.data.summary ? (
+            <p className="summary-text">{impact.data.summary}</p>
+          ) : (
+            <p className="card-subtitle">AI explanation unavailable (no AI provider configured for this backend).</p>
+          )}
+        </div>
+      )}
+      {mode === 'impact' && impact.isError && <div className="architecture-banner">{errorMessage(impact.error)}</div>}
+      {mode === 'impact' && !impact.data && !impact.isPending && !impact.isError && (
+        <div className="architecture-banner">Select a file in the file tree and click &ldquo;Analyze Impact&rdquo;.</div>
+      )}
 
       <div className="architecture-layout">
         <div className="architecture-sidebar">
@@ -271,9 +442,9 @@ function ArchitectureTab() {
         </div>
 
         <RepositoryGraph
-          nodes={filteredNodes}
-          edges={filteredEdges}
-          direction={MODE_PRESETS[mode].direction}
+          nodes={displayedNodes}
+          edges={displayedEdges}
+          direction={direction}
           selectedNodeId={selectedNode?.id}
           highlightedIds={highlightedIds}
           onNodeClick={handleGraphNodeClick}

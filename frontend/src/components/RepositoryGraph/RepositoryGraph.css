@@ -82,6 +82,15 @@
   border-style: dashed;
 }
 
+.graph-node-function {
+  border-left: 3px solid var(--warning);
+}
+
+.graph-node-api {
+  border-left: 3px solid var(--destructive);
+  border-style: dashed;
+}
+
 .graph-node-selected {
   border-color: var(--ring);
   box-shadow: 0 0 0 2px var(--ring);
@@ -89,6 +98,21 @@
 
 .graph-node-dimmed {
   opacity: 0.25;
+}
+
+.graph-node-impact-target {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+.graph-node-impact-direct {
+  border-left-color: var(--destructive);
+  background: rgba(242, 85, 90, 0.08);
+}
+
+.graph-node-impact-indirect {
+  border-left-color: var(--warning);
+  background: rgba(240, 180, 41, 0.06);
 }
 
 .repository-graph .react-flow__handle {

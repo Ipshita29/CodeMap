@@ -9,6 +9,7 @@
   --destructive: #f2555a;
   --ring: #6e7bf2;
   --success: #34d399;
+  --warning: #f0b429;
   --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
 }
@@ -664,6 +665,43 @@ body {
 .file-tree-item-active {
   color: var(--accent);
   font-weight: 600;
+}
+
+/* Impact analysis report */
+
+.impact-report-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.risk-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.risk-low {
+  background: rgba(52, 211, 153, 0.12);
+  color: var(--success);
+}
+
+.risk-medium {
+  background: rgba(240, 180, 41, 0.14);
+  color: var(--warning);
+}
+
+.risk-high,
+.risk-critical {
+  background: rgba(242, 85, 90, 0.14);
+  color: var(--destructive);
 }
 
 @media (max-width: 60rem) {
