@@ -432,6 +432,7 @@ body {
 
 .mode-toggle {
   display: inline-flex;
+  flex-wrap: wrap;
   gap: 0.25rem;
   padding: 0.25rem;
   border-radius: 0.5rem;
@@ -702,6 +703,325 @@ body {
 .risk-critical {
   background: rgba(242, 85, 90, 0.14);
   color: var(--destructive);
+}
+
+/* Git tab */
+
+.git-stat-note {
+  margin: 0.5rem 0 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.commit-hash {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--accent);
+  background: rgba(110, 123, 242, 0.1);
+  border-radius: 0.25rem;
+  padding: 0.1rem 0.4rem;
+}
+
+.timeline {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-left: 2px solid var(--card-border);
+  margin-left: 0.5rem;
+}
+
+.timeline-item {
+  position: relative;
+  padding: 0 0 1.25rem 1.25rem;
+}
+
+.timeline-item:last-child {
+  padding-bottom: 0;
+}
+
+.timeline-item::before {
+  content: '';
+  position: absolute;
+  left: -0.4375rem;
+  top: 0.3rem;
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 9999px;
+  background: var(--accent);
+  border: 2px solid var(--background);
+}
+
+.timeline-date {
+  margin: 0 0 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.timeline-message {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--foreground);
+}
+
+.timeline-meta {
+  margin: 0.25rem 0 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.hotspot-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.hotspot-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.8125rem;
+}
+
+.hotspot-path {
+  font-family: var(--font-mono);
+  color: var(--foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.hotspot-count {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+/* Health tab */
+
+.health-score-hero {
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+
+.health-score-ring {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 6rem;
+  height: 6rem;
+  border-radius: 9999px;
+  border: 4px solid var(--accent);
+  flex-shrink: 0;
+}
+
+.health-score-ring-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--foreground);
+  line-height: 1;
+}
+
+.health-score-ring-label {
+  font-size: 0.625rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.health-category-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 1rem;
+  flex: 1;
+  min-width: 16rem;
+}
+
+.health-category {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.health-category-label {
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-transform: capitalize;
+}
+
+.health-category-bar-track {
+  height: 0.375rem;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.health-category-bar-fill {
+  height: 100%;
+  border-radius: 9999px;
+  background: var(--accent);
+}
+
+.health-category-value {
+  font-size: 0.75rem;
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.finding-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.finding-item {
+  border-radius: 0.5rem;
+  border: 1px solid var(--card-border);
+  border-left-width: 3px;
+  padding: 0.75rem 1rem;
+}
+
+.finding-item-high {
+  border-left-color: var(--destructive);
+}
+
+.finding-item-medium {
+  border-left-color: var(--warning);
+}
+
+.finding-item-low {
+  border-left-color: var(--muted);
+}
+
+.finding-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.375rem;
+}
+
+.finding-severity {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.finding-severity-high {
+  color: var(--destructive);
+}
+
+.finding-severity-medium {
+  color: var(--warning);
+}
+
+.finding-severity-low {
+  color: var(--muted);
+}
+
+.finding-category {
+  font-size: 0.6875rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.finding-path {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.finding-reason {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--foreground);
+}
+
+.finding-recommendation {
+  margin: 0.375rem 0 0;
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
+/* Export tab */
+
+.export-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1.5rem;
+}
+
+.export-format-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.export-checklist {
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
+.export-checklist li::before {
+  content: '\2713  ';
+  color: var(--success);
+}
+
+.export-checklist li.export-checklist-missing::before {
+  content: '\2013  ';
+  color: var(--muted);
+}
+
+/* Progress stages */
+
+.progress-stage-list {
+  margin: 1.5rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  text-align: left;
+}
+
+.progress-stage {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.progress-stage-done {
+  color: var(--foreground);
+}
+
+.progress-stage-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.125rem;
+  height: 1.125rem;
+  flex-shrink: 0;
 }
 
 @media (max-width: 60rem) {

@@ -21,9 +21,16 @@ BINARY_EXTENSIONS: set[str] = {
     ".png", ".jpg", ".jpeg", ".gif", ".ico", ".webp", ".bmp",
     ".pdf", ".zip", ".tar", ".gz", ".rar", ".7z",
     ".woff", ".woff2", ".ttf", ".eot", ".otf",
-    ".mp3", ".mp4", ".mov", ".avi",
+    ".mp3", ".mp4", ".mov", ".avi", ".webm", ".flac", ".wav", ".ogg",
     ".exe", ".dll", ".so", ".dylib", ".class", ".jar", ".wasm",
     ".pyc", ".pyo",
+    # 3D / design assets
+    ".glb", ".gltf", ".obj", ".fbx", ".stl", ".blend", ".3ds",
+    ".psd", ".ai", ".sketch", ".heic",
+    # Data / ML artifacts -- text-decodable in the sense that Python won't
+    # raise, but the "lines" they decode to are meaningless noise.
+    ".pkl", ".pickle", ".db", ".sqlite", ".sqlite3", ".parquet",
+    ".h5", ".hdf5", ".onnx", ".pt", ".pth", ".npy", ".npz", ".model", ".bin", ".dat",
 }
 
 # Extension -> human-readable language name, used for both the per-file

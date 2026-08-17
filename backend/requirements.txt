@@ -8,3 +8,4 @@ tree-sitter-typescript==0.23.2
 tree-sitter-python==0.25.0
 pytest==9.1.1
 openai==2.53.0
+fpdf2==2.8.8

@@ -70,3 +70,33 @@ export function traceExecutionFlow(payload) {
 export function analyzeChangeImpact(payload) {
   return apiRequest('/repository/impact', { method: 'POST', body: payload })
 }
+
+export function fetchGitSummary() {
+  return apiRequest('/repository/git/summary', { method: 'GET' })
+}
+
+export function fetchGitHistory({ limit } = {}) {
+  const query = limit ? `?limit=${encodeURIComponent(limit)}` : ''
+  return apiRequest(`/repository/git/history${query}`, { method: 'GET' })
+}
+
+export function fetchFileGitHistory(path) {
+  return apiRequest(`/repository/git/file-history?path=${encodeURIComponent(path)}`, { method: 'GET' })
+}
+
+export function fetchRepositoryHealth() {
+  return apiRequest('/repository/health', { method: 'GET' })
+}
+
+export async function exportPdf({ title, markdown }) {
+  const response = await fetch(`${API_BASE_URL}/repository/export/pdf`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, markdown }),
+  })
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null)
+    throw new ApiError(payload?.detail ?? `Request failed with status ${response.status}`, response.status)
+  }
+  return response.blob()
+}

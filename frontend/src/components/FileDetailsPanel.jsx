@@ -1,5 +1,7 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 
+import { fetchFileGitHistory } from '@/api'
 import './FileDetailsPanel.css'
 
 function computeFileDetails(path, intelligence) {
@@ -36,6 +38,55 @@ function DetailsSection({ title, items, render, emptyLabel = 'None' }) {
 }
 
 const IMPACT_LABELS = { target: 'Selected file', direct: 'Direct dependent', indirect: 'Indirect dependent' }
+
+function GitHistorySection({ path }) {
+  const [expanded, setExpanded] = useState(false)
+  const { data, isPending, isError, error, refetch } = useQuery({
+    queryKey: ['file-git-history', path],
+    queryFn: () => fetchFileGitHistory(path),
+    enabled: false,
+    retry: false,
+  })
+
+  function handleToggle() {
+    if (!expanded && !data) refetch()
+    setExpanded((prev) => !prev)
+  }
+
+  return (
+    <section className="details-section">
+      <button type="button" className="btn btn-outline btn-block" onClick={handleToggle}>
+        {expanded ? 'Hide Git History' : 'View Git History'}
+      </button>
+
+      {expanded && (
+        <div className="mt-3">
+          {isPending && <p className="card-subtitle">Loading history…</p>}
+          {isError && (
+            <p className="card-subtitle">{error instanceof Error ? error.message : 'Could not load Git history.'}</p>
+          )}
+          {data && !data.has_git_history && <p className="card-subtitle">No Git history available.</p>}
+          {data && data.has_git_history && data.commits.length === 0 && (
+            <p className="card-subtitle">No commits found for this file.</p>
+          )}
+          {data && data.commits.length > 0 && (
+            <ul className="timeline">
+              {data.commits.map((commit) => (
+                <li key={commit.short_hash} className="timeline-item">
+                  <p className="timeline-date">{commit.date ? new Date(commit.date).toLocaleDateString() : ''}</p>
+                  <p className="timeline-message">{commit.message}</p>
+                  <p className="timeline-meta">
+                    <span className="commit-hash">{commit.short_hash}</span>
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </section>
+  )
+}
 
 export function FileDetailsPanel({ node, intelligence, onExplain, explain }) {
   const detailsPath = node?.type === 'file' || node?.type === 'function' ? node.data.path : null
@@ -101,7 +152,11 @@ export function FileDetailsPanel({ node, intelligence, onExplain, explain }) {
         {node.data.lines != null && <span className="tag">{node.data.lines} lines</span>}
       </div>
 
-      {node.data.parse_error && <p className="field-error">Parse error: {node.data.parse_error}</p>}
+      {node.data.parse_error && (
+        <p className="field-error">
+          This file could not be analyzed. The language or syntax may be unsupported, or the file is too large.
+        </p>
+      )}
 
       {details && (
         <>
@@ -112,6 +167,8 @@ export function FileDetailsPanel({ node, intelligence, onExplain, explain }) {
           <DetailsSection title="Imported by" items={details.importedBy} render={(path) => path} />
         </>
       )}
+
+      <GitHistorySection key={node.data.path} path={node.data.path} />
 
       <button
         type="button"
