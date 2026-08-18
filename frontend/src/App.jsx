@@ -3,21 +3,35 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster as Sonner } from 'sonner'
 
 import { LandingPage } from '@/pages/landing-page'
-import { AnalysisPage } from '@/pages/analysis-page'
-import { RepositoryInsightsPage } from '@/pages/repository-insights-page'
+import { AnalyzingPage } from '@/pages/analyzing-page'
+import { WorkspacePage } from '@/pages/workspace-page'
 
 const queryClient = new QueryClient()
 
 function App() {
   const [view, setView] = useState('landing')
+  const [repositoryName, setRepositoryName] = useState(null)
+
+  function handleImportAnother() {
+    queryClient.clear()
+    setRepositoryName(null)
+    setView('landing')
+  }
 
   return (
     <QueryClientProvider client={queryClient}>
-      {view === 'landing' && <LandingPage onViewAnalysis={() => setView('analysis')} />}
-      {view === 'analysis' && (
-        <AnalysisPage onBack={() => setView('landing')} onViewInsights={() => setView('insights')} />
+      {view === 'landing' && (
+        <LandingPage
+          onImported={(name) => {
+            setRepositoryName(name)
+            setView('analyzing')
+          }}
+        />
       )}
-      {view === 'insights' && <RepositoryInsightsPage onBack={() => setView('analysis')} />}
+      {view === 'analyzing' && (
+        <AnalyzingPage repositoryName={repositoryName} onReady={() => setView('workspace')} onBack={handleImportAnother} />
+      )}
+      {view === 'workspace' && <WorkspacePage onImportAnother={handleImportAnother} />}
       <Sonner
         theme="dark"
         position="top-right"
