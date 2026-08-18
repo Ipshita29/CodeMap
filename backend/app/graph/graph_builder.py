@@ -19,13 +19,26 @@ from app.models.graph import GraphEdge, GraphNode, GraphNodeData, GraphResponse
 FRONTEND_MARKERS = {"frontend", "client", "web"}
 BACKEND_MARKERS = {"backend", "server", "api"}
 ROOT_FOLDER_ID = "."
+MAX_EXTERNAL_NODES = 30
 
 FileEdgeKey = tuple[str, str, str]  # (source_path, target_path, edge_type)
 ExternalEdgeKey = tuple[str, str]  # (file_path, external_node_id)
 
 
 def _top_level_folder(path: str) -> str:
-    return path.split("/", 1)[0] if "/" in path else ROOT_FOLDER_ID
+    return _folder_at_depth(path, 1)
+
+
+def _folder_at_depth(path: str, depth: int) -> str:
+    """Groups `path` by its first `depth` folder segments. A file that
+    doesn't have `depth` segments of its own (e.g. a file sitting directly
+    in the folder being grouped at this depth) is grouped under its
+    immediate parent instead, same as `depth=1` already did for root-level
+    files -- this just generalizes that to any depth."""
+    parts = path.split("/")
+    if len(parts) <= depth:
+        return "/".join(parts[:-1]) or ROOT_FOLDER_ID
+    return "/".join(parts[:depth])
 
 
 class GraphBuilder:
@@ -45,7 +58,29 @@ class GraphBuilder:
         file_edges, external_by_file = self.index.file_edges, self.index.external_by_file
 
         if focus:
+            focus = focus.strip("/")
             scoped = self._scope_to_focus(focus, file_paths, file_edges)
+
+            if len(scoped) > self.max_file_nodes:
+                # A single extra folder-depth level isn't always enough for a
+                # monorepo (e.g. focusing "packages" can still contain hundreds
+                # of files one level down) -- keep grouping one level deeper
+                # until the node count is manageable, or we run out of
+                # meaningful depth to add.
+                depth = focus.count("/") + 2
+                nodes, edges = self._build_folder_graph(scoped, file_edges, external_by_file, depth, root=focus)
+                return GraphResponse(
+                    nodes=nodes,
+                    edges=edges,
+                    mode="folders",
+                    truncated=True,
+                    total_files=total_files,
+                    message=(
+                        f"'{focus}' contains {len(scoped)} files. Showing its subfolders — "
+                        "click one or use search to explore specific files."
+                    ),
+                )
+
             nodes = self._build_file_nodes(scoped, intel_files, lines_by_path, layer_by_path)
             nodes += self._build_external_nodes(external_by_file, scoped)
             edges = self._build_file_edges(file_edges, scoped)
@@ -60,7 +95,7 @@ class GraphBuilder:
             )
 
         if total_files > self.max_file_nodes:
-            nodes, edges = self._build_folder_graph(file_paths, file_edges, external_by_file)
+            nodes, edges = self._build_folder_graph(file_paths, file_edges, external_by_file, depth=1, root=ROOT_FOLDER_ID)
             return GraphResponse(
                 nodes=nodes,
                 edges=edges,
@@ -119,25 +154,34 @@ class GraphBuilder:
         file_paths: list[str],
         file_edges: dict[FileEdgeKey, int],
         external_by_file: dict[ExternalEdgeKey, dict],
+        depth: int,
+        root: str,
     ) -> tuple[list[GraphNode], list[GraphEdge]]:
-        folder_of = {p: _top_level_folder(p) for p in file_paths}
+        folder_of = {p: _folder_at_depth(p, depth) for p in file_paths}
         folder_counts: dict[str, int] = {}
         for folder in folder_of.values():
             folder_counts[folder] = folder_counts.get(folder, 0) + 1
+
+        def _label(folder: str) -> str:
+            if folder == root:
+                return "(root)" if root == ROOT_FOLDER_ID else f"{root} (direct files)"
+            return folder
 
         nodes = [
             GraphNode(
                 id=folder,
                 type="folder",
-                data=GraphNodeData(
-                    label="(root)" if folder == ROOT_FOLDER_ID else folder, path=folder, file_count=count
-                ),
+                data=GraphNodeData(label=_label(folder), path=folder, file_count=count),
             )
             for folder, count in sorted(folder_counts.items())
         ]
 
         folder_edges: dict[FileEdgeKey, int] = {}
         for (source, target, edge_type), weight in file_edges.items():
+            # `file_paths` (and so `folder_of`) may be a scoped subset of the
+            # repo rather than every file -- skip edges that reach outside it.
+            if source not in folder_of or target not in folder_of:
+                continue
             source_folder, target_folder = folder_of[source], folder_of[target]
             if source_folder == target_folder:
                 continue
@@ -150,14 +194,28 @@ class GraphBuilder:
         ]
 
         folder_external: dict[ExternalEdgeKey, dict] = {}
+        total_weight_by_external: dict[str, int] = {}
         for (file, external_id), entry in external_by_file.items():
+            if file not in folder_of:
+                continue
             folder = folder_of[file]
             key = (folder, external_id)
             bucket = folder_external.setdefault(key, {"weight": 0, "label": entry["label"]})
             bucket["weight"] += entry["weight"]
+            total_weight_by_external[external_id] = total_weight_by_external.get(external_id, 0) + entry["weight"]
+
+        # An aggregated view is dominated by however many *folders* there
+        # are, not files -- an uncapped external list (one node per package
+        # ever imported, repo-wide) can dwarf that and bury the actual
+        # repository structure. Keep only the packages most imported overall.
+        kept_external_ids = {
+            eid for eid, _ in sorted(total_weight_by_external.items(), key=lambda item: item[1], reverse=True)[:MAX_EXTERNAL_NODES]
+        }
 
         seen_external: dict[str, str] = {}
         for (folder, external_id), entry in folder_external.items():
+            if external_id not in kept_external_ids:
+                continue
             edges.append(
                 GraphEdge(id=f"{folder}->{external_id}", source=folder, target=external_id, type="imports", weight=entry["weight"])
             )

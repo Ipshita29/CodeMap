@@ -31,7 +31,7 @@ const NODE_TYPE_FILTERS = [
 ]
 
 const MODE_LABELS = {
-  architecture: 'Architecture',
+  architecture: 'Repository Map',
   dependencies: 'Dependencies',
   impact: 'Impact Analysis',
 }
@@ -66,13 +66,23 @@ function impactToGraphData(impactResult) {
   return { nodes, edges }
 }
 
-function buildFileTree(paths) {
+// Accepts { path, type } entries -- type is "file" for a leaf file node, or
+// "folder" for a real folder-graph-node (the repository-map's aggregated
+// view, used for large repos, only ever returns folder/external nodes, no
+// file nodes -- without this, a big repo's sidebar had nothing to show).
+// Path segments with no matching entry are still rendered, just inert.
+function buildFileTree(entries) {
   const root = {}
-  for (const path of paths) {
+  for (const { path, type } of entries) {
     const parts = path.split('/')
     let cursor = root
     parts.forEach((part, index) => {
-      cursor[part] ??= { name: part, path: parts.slice(0, index + 1).join('/'), isFile: index === parts.length - 1 }
+      const isTerminal = index === parts.length - 1
+      cursor[part] ??= { name: part, path: parts.slice(0, index + 1).join('/'), isSelectable: false, isFolder: false }
+      if (isTerminal) {
+        cursor[part].isSelectable = true
+        cursor[part].isFolder = type === 'folder'
+      }
       if (index < parts.length - 1) {
         cursor[part].children ??= {}
       }
@@ -84,27 +94,25 @@ function buildFileTree(paths) {
 
 function FileTree({ nodes, selectedPath, onSelect }) {
   const entries = Object.values(nodes).sort(
-    (a, b) => Number(a.isFile) - Number(b.isFile) || a.name.localeCompare(b.name),
+    (a, b) => Number(a.isSelectable) - Number(b.isSelectable) || a.name.localeCompare(b.name),
   )
 
   return (
     <ul className="file-tree">
       {entries.map((entry) => (
         <li key={entry.path}>
-          {entry.isFile ? (
+          {entry.isSelectable ? (
             <button
               type="button"
               className={`file-tree-item${entry.path === selectedPath ? ' file-tree-item-active' : ''}`}
               onClick={() => onSelect(entry.path)}
             >
-              {entry.name}
+              {entry.isFolder ? `${entry.name}/` : entry.name}
             </button>
           ) : (
-            <>
-              <span className="file-tree-folder">{entry.name}</span>
-              {entry.children && <FileTree nodes={entry.children} selectedPath={selectedPath} onSelect={onSelect} />}
-            </>
+            <span className="file-tree-folder">{entry.name}</span>
           )}
+          {entry.children && <FileTree nodes={entry.children} selectedPath={selectedPath} onSelect={onSelect} />}
         </li>
       ))}
     </ul>
@@ -187,7 +195,11 @@ function ArchitectureTab() {
     const original = graphQuery.data?.nodes.find((node) => node.id === path)
     if (!original) return
     selectNode(original)
-    setCenterRequest({ nodeId: path, key: Date.now() })
+    if (original.type === 'folder') {
+      setFocus(original.id)
+    } else {
+      setCenterRequest({ nodeId: path, key: Date.now() })
+    }
   }
 
   function handleReset() {
@@ -233,7 +245,12 @@ function ArchitectureTab() {
   }, [mode, search, filteredNodes, filteredEdges])
 
   const fileTree = useMemo(
-    () => buildFileTree(rawNodes.filter((node) => node.type === 'file').map((node) => node.data.path)),
+    () =>
+      buildFileTree(
+        rawNodes
+          .filter((node) => node.type === 'file' || node.type === 'folder')
+          .map((node) => ({ path: node.data.path, type: node.type })),
+      ),
     [rawNodes],
   )
 
