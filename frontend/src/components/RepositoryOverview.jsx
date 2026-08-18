@@ -1,109 +1,97 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
+import { Code2, Loader2, Sparkles } from 'lucide-react'
 
 import { ApiError, fetchGitSummary, generateRepositorySummary } from '@/api'
+import { AskCodeMapPanel } from '@/components/AskCodeMapPanel'
+import { getFrameworkIcon, getLanguageIcon } from '@/lib/tech-icons'
+import {
+  buildInsights,
+  computeLanguageBreakdown,
+  computeTopFolders,
+} from '@/lib/repository-intelligence'
 
 function errorMessage(error) {
   return error instanceof ApiError ? error.message : 'Something went wrong. Please try again.'
 }
 
-function formatBytes(bytes) {
-  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
-  if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)} KB`
-  return `${bytes} B`
+const FRAMEWORK_CATEGORY = {
+  React: 'Frameworks',
+  'Next.js': 'Frameworks',
+  'Vue.js': 'Frameworks',
+  Angular: 'Frameworks',
+  Svelte: 'Frameworks',
+  Express: 'Frameworks',
+  NestJS: 'Frameworks',
+  FastAPI: 'Frameworks',
+  Flask: 'Frameworks',
+  Django: 'Frameworks',
+  'Dart/Flutter': 'Frameworks',
+  Axios: 'Libraries',
+  Mongoose: 'Libraries',
+  'React Query': 'Libraries',
+  NumPy: 'Libraries',
+  Pandas: 'Libraries',
+  SQLAlchemy: 'Libraries',
+  Pydantic: 'Libraries',
+  'Tailwind CSS': 'Libraries',
+  'Socket.IO': 'Libraries',
+  Vite: 'Tooling',
+  GitPython: 'Tooling',
+  'PHP (Composer)': 'Tooling',
+  'Java (Maven)': 'Tooling',
+}
+const CATEGORY_ORDER = ['Frameworks', 'Libraries', 'Infrastructure', 'Tooling']
+
+function groupFrameworksByCategory(frameworks) {
+  const groups = new Map()
+  for (const framework of frameworks) {
+    const category = FRAMEWORK_CATEGORY[framework] ?? 'Frameworks'
+    if (!groups.has(category)) groups.set(category, [])
+    groups.get(category).push(framework)
+  }
+  return CATEGORY_ORDER.filter((category) => groups.has(category)).map((category) => [category, groups.get(category)])
 }
 
-function computeTopFolders(files) {
-  const counts = new Map()
-  for (const file of files) {
-    const top = file.path.includes('/') ? file.path.split('/')[0] : '(root)'
-    counts.set(top, (counts.get(top) ?? 0) + 1)
-  }
-  return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6)
+function TechIcon({ icon: Icon }) {
+  return Icon ? <Icon size={18} /> : <Code2 size={18} />
 }
 
-// Every insight here is derived from data already on screen (or already
-// cached from a section the user visited) -- never invented. Capped at 5.
-function buildInsights(data, gitSummary, healthCache) {
-  const insights = []
-  const { languages, frameworks, statistics, total_files } = data
+const SUMMARY_LOADING_PHRASES = ['Analyzing architecture…', 'Understanding major modules…', 'Connecting dependencies…', 'Building explanation…']
 
-  const languageEntries = Object.entries(languages)
-  if (languageEntries.length > 0) {
-    const [topLanguage, topCount] = languageEntries[0]
-    const share = Math.round((topCount / total_files) * 100)
-    if (share >= 40) {
-      insights.push({
-        title: `Primarily ${topLanguage}`,
-        body: `${share}% of the ${total_files} analyzed files are ${topLanguage}.`,
-      })
-    } else if (languageEntries.length > 1) {
-      insights.push({
-        title: 'Multi-language repository',
-        body: `Spans ${languageEntries.length} languages, led by ${topLanguage} and ${languageEntries[1][0]}.`,
-      })
-    }
-  }
-
-  const topFolders = computeTopFolders(data.files)
-  const bigFolders = topFolders.filter(([, count]) => count >= 10)
-  if (bigFolders.length >= 3) {
-    const names = bigFolders.slice(0, 3).map(([name]) => name)
-    insights.push({
-      title: 'Multi-package structure',
-      body: `${names.join(', ')} are each substantial, independently-organized areas of the codebase.`,
-    })
-  }
-
-  if (statistics.largest_file) {
-    const { path, lines, size_bytes } = statistics.largest_file
-    // A binary/non-text file (a 3D model, image, lockfile, ...) has no
-    // meaningful line count -- "0 lines long" reads as broken, not honest.
-    const description = lines > 0 ? `${lines.toLocaleString()} lines long` : `${formatBytes(size_bytes)} on disk`
-    insights.push({
-      title: 'Largest file',
-      body: `${path} is ${description}.`,
-    })
-  }
-
-  if (frameworks.length > 0) {
-    insights.push({
-      title: 'Detected frameworks',
-      body: `Built with ${frameworks.join(', ')}.`,
-    })
-  }
-
-  if (healthCache?.findings?.length > 0) {
-    const top = healthCache.findings[0]
-    insights.push({
-      title: top.severity === 'high' ? 'Potential hotspot' : 'Worth reviewing',
-      body: top.reason,
-    })
-  }
-
-  if (gitSummary?.has_git_history && gitSummary.activity.most_modified_files.length > 0) {
-    const [hotFile] = gitSummary.activity.most_modified_files
-    insights.push({
-      title: 'Frequently changed',
-      body: `${hotFile.path} has been modified in ${hotFile.commit_count} commits.`,
-    })
-  }
-
-  return insights.slice(0, 5)
+function SummaryLoadingState() {
+  const [phraseIndex, setPhraseIndex] = useState(0)
+  useEffect(() => {
+    const interval = setInterval(() => setPhraseIndex((index) => (index + 1) % SUMMARY_LOADING_PHRASES.length), 1600)
+    return () => clearInterval(interval)
+  }, [])
+  return (
+    <div className="summary-loading">
+      <Loader2 className="spinner" size={16} />
+      <span>{SUMMARY_LOADING_PHRASES[phraseIndex]}</span>
+    </div>
+  )
 }
 
 export function RepositoryOverview({ data, onExploreStructure }) {
-  const [mode, setMode] = useState('beginner')
+  const [summaryMode, setSummaryMode] = useState('beginner')
+
+  // enabled: false -- this only ever runs when the user explicitly clicks
+  // "Generate Summary" and calls refetch(). No AI call happens just from
+  // viewing Overview, and no percentage/stage is faked while it's pending.
   const summary = useQuery({
     queryKey: ['repository-summary'],
     queryFn: generateRepositorySummary,
     retry: false,
     staleTime: Infinity,
+    enabled: false,
   })
   const gitSummary = useQuery({ queryKey: ['git-summary'], queryFn: fetchGitSummary, retry: false })
 
-  const { total_files, total_folders, languages, frameworks, statistics } = data
+  const { total_files, total_folders, frameworks, statistics } = data
   const topFolders = computeTopFolders(data.files)
+  const languageBreakdown = computeLanguageBreakdown(data.files)
+  const frameworkGroups = groupFrameworksByCategory(frameworks)
   const insights = buildInsights(data, gitSummary.data, null)
   const contributors = gitSummary.data?.has_git_history ? gitSummary.data.activity.contributors : null
 
@@ -112,35 +100,18 @@ export function RepositoryOverview({ data, onExploreStructure }) {
       <section className="overview-identity">
         <h1>{data.repository_name}</h1>
         <p className="card-subtitle">Repository analysis</p>
+      </section>
 
-        {summary.data && (
-          <div className="mode-toggle mt-6">
-            <button
-              type="button"
-              className={mode === 'beginner' ? 'mode-btn mode-btn-active' : 'mode-btn'}
-              onClick={() => setMode('beginner')}
-            >
-              Beginner
-            </button>
-            <button
-              type="button"
-              className={mode === 'developer' ? 'mode-btn mode-btn-active' : 'mode-btn'}
-              onClick={() => setMode('developer')}
-            >
-              Developer
-            </button>
-          </div>
-        )}
-
-        {summary.isPending && <p className="card-subtitle mt-3">Generating a summary of this repository…</p>}
-        {summary.isError && (
-          <p className="card-subtitle mt-3">Could not generate an AI summary: {errorMessage(summary.error)}</p>
-        )}
-        {summary.data && (
-          <p className="summary-text">
-            {mode === 'beginner' ? summary.data.beginner_summary : summary.data.developer_summary}
-          </p>
-        )}
+      <section className="ask-codemap-hero">
+        <div className="ask-codemap-hero-header">
+          <Sparkles size={18} />
+          <h2>Ask CodeMap</h2>
+        </div>
+        <p className="ask-codemap-tagline">
+          Your repository, explained. Ask questions about architecture, files, dependencies, implementation and
+          behavior — grounded in what CodeMap actually found in this codebase.
+        </p>
+        <AskCodeMapPanel data={data} suggestionsLabel="Try asking" />
       </section>
 
       <div className="metrics-row">
@@ -155,52 +126,71 @@ export function RepositoryOverview({ data, onExploreStructure }) {
         </span>
         {contributors != null && (
           <span>
-            <strong>{contributors}</strong> contributors
+            <strong>{contributors}</strong> contributor{contributors === 1 ? '' : 's'}
           </span>
         )}
       </div>
 
-      <div className="overview-grid">
-        <section className="overview-block">
-          <h2>Repository structure</h2>
-          {topFolders.length > 0 ? (
-            <ul className="structure-summary-list">
-              {topFolders.map(([name, count]) => (
-                <li key={name} className="structure-summary-row">
-                  <span className="structure-summary-name">{name === '(root)' ? name : `${name}/`}</span>
-                  <span className="structure-summary-count">{count} files</span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="card-subtitle">No files found.</p>
-          )}
-          <button type="button" className="link-button" onClick={onExploreStructure}>
-            Explore structure →
-          </button>
-        </section>
+      <section className="overview-block">
+        <h2>Tech stack</h2>
+        {languageBreakdown.length > 0 || frameworkGroups.length > 0 ? (
+          <div className="tech-stack">
+            {languageBreakdown.length > 0 && (
+              <div className="tech-category">
+                <p className="tech-category-label">Languages</p>
+                <div className="tech-grid">
+                  {languageBreakdown.map(({ language, percent }) => (
+                    <div key={language} className="tech-chip">
+                      <span className="tech-chip-icon">
+                        <TechIcon icon={getLanguageIcon(language)} />
+                      </span>
+                      <span className="tech-chip-name">{language}</span>
+                      <span className="tech-chip-meta">{percent}% of code</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
-        <section className="overview-block">
-          <h2>Tech stack</h2>
-          {Object.keys(languages).length > 0 || frameworks.length > 0 ? (
-            <ul className="tag-list">
-              {Object.entries(languages).map(([language, count]) => (
-                <li key={language} className="tag">
-                  {language}
-                  <span className="tag-count">{count}</span>
-                </li>
-              ))}
-              {frameworks.map((framework) => (
-                <li key={framework} className="tag">
-                  {framework}
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="card-subtitle">No recognized languages or frameworks found.</p>
-          )}
-        </section>
-      </div>
+            {frameworkGroups.map(([category, names]) => (
+              <div key={category} className="tech-category">
+                <p className="tech-category-label">{category}</p>
+                <div className="tech-grid">
+                  {names.map((name) => (
+                    <div key={name} className="tech-chip">
+                      <span className="tech-chip-icon">
+                        <TechIcon icon={getFrameworkIcon(name)} />
+                      </span>
+                      <span className="tech-chip-name">{name}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="card-subtitle">No recognized languages or frameworks found.</p>
+        )}
+      </section>
+
+      <section className="overview-block">
+        <h2>Repository structure</h2>
+        {topFolders.length > 0 ? (
+          <ul className="structure-summary-list">
+            {topFolders.map(([name, count]) => (
+              <li key={name} className="structure-summary-row">
+                <span className="structure-summary-name">{name === '(root)' ? name : `${name}/`}</span>
+                <span className="structure-summary-count">{count} files</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="card-subtitle">No files found.</p>
+        )}
+        <button type="button" className="link-button" onClick={onExploreStructure}>
+          Explore structure →
+        </button>
+      </section>
 
       <section className="overview-block">
         <h2>Key insights</h2>
@@ -218,6 +208,53 @@ export function RepositoryOverview({ data, onExploreStructure }) {
           </ol>
         ) : (
           <p className="card-subtitle">Nothing notable surfaced yet.</p>
+        )}
+      </section>
+
+      <section className="overview-block summary-block">
+        <h2>AI Repository Summary</h2>
+        {!summary.data && !summary.isFetching && (
+          <>
+            <p className="card-subtitle">
+              Generate a detailed explanation of this repository, including its purpose, architecture, important
+              modules and how the major pieces work together.
+            </p>
+            <button type="button" className="btn btn-outline mt-3" onClick={() => summary.refetch()}>
+              Generate Summary
+            </button>
+            {summary.isError && (
+              <p className="field-error mt-3">Could not generate a summary: {errorMessage(summary.error)}</p>
+            )}
+          </>
+        )}
+
+        {summary.isFetching && <SummaryLoadingState />}
+
+        {summary.data && !summary.isFetching && (
+          <>
+            <div className="mode-toggle mt-3">
+              <button
+                type="button"
+                className={summaryMode === 'beginner' ? 'mode-btn mode-btn-active' : 'mode-btn'}
+                onClick={() => setSummaryMode('beginner')}
+              >
+                Beginner
+              </button>
+              <button
+                type="button"
+                className={summaryMode === 'developer' ? 'mode-btn mode-btn-active' : 'mode-btn'}
+                onClick={() => setSummaryMode('developer')}
+              >
+                Developer
+              </button>
+            </div>
+            <p className="summary-text">
+              {summaryMode === 'beginner' ? summary.data.beginner_summary : summary.data.developer_summary}
+            </p>
+            <button type="button" className="btn btn-outline mt-3" onClick={() => summary.refetch()}>
+              Regenerate
+            </button>
+          </>
         )}
       </section>
     </div>

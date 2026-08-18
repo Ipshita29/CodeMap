@@ -14,9 +14,6 @@ import { fetchRepositoryAnalysis } from '@/api'
 export function WorkspacePage({ onImportAnother }) {
   const [section, setSection] = useState('overview')
   const [askOpen, setAskOpen] = useState(false)
-
-  // Same query key the analyzing screen already resolved -- this reads
-  // straight from cache in the normal flow, no duplicate request.
   const { data, isPending, isError, error } = useQuery({
     queryKey: ['repository-analysis'],
     queryFn: fetchRepositoryAnalysis,
@@ -67,7 +64,7 @@ export function WorkspacePage({ onImportAnother }) {
         {section === 'health' && <HealthDashboard />}
       </AppShell>
 
-      {askOpen && <AskCodeMap onClose={() => setAskOpen(false)} />}
+      {askOpen && <AskCodeMap data={data} onClose={() => setAskOpen(false)} />}
     </>
   )
 }
