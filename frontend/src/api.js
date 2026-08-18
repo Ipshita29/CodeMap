@@ -50,10 +50,6 @@ export function askRepositoryQuestion({ question, mode }) {
   return apiRequest('/repository/chat', { method: 'POST', body: { question, mode } })
 }
 
-export function runCodeAnalysis() {
-  return apiRequest('/repository/analyze-code', { method: 'POST' })
-}
-
 export function fetchCodeIntelligence() {
   return apiRequest('/repository/code-intelligence', { method: 'GET' })
 }
@@ -61,10 +57,6 @@ export function fetchCodeIntelligence() {
 export function fetchRepositoryGraph({ focus } = {}) {
   const query = focus ? `?focus=${encodeURIComponent(focus)}` : ''
   return apiRequest(`/repository/graph${query}`, { method: 'GET' })
-}
-
-export function traceExecutionFlow(payload) {
-  return apiRequest('/repository/flow', { method: 'POST', body: payload })
 }
 
 export function analyzeChangeImpact(payload) {

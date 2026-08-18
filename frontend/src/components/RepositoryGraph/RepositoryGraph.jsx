@@ -84,38 +84,11 @@ function ExternalNode({ data, selected }) {
   )
 }
 
-function FunctionNode({ data, selected }) {
-  return (
-    <div className={nodeClassName('function', selected, data.dimmed)}>
-      <Handle type="target" position={Position.Top} />
-      <span className="graph-node-label">{data.label}()</span>
-      <span className="graph-node-meta">{data.path ? data.path.split('/').pop() : 'unresolved'}</span>
-      <Handle type="source" position={Position.Bottom} />
-    </div>
-  )
-}
-
-function ApiNode({ data, selected }) {
-  return (
-    <div className={nodeClassName('api', selected, data.dimmed)}>
-      <Handle type="target" position={Position.Top} />
-      <span className="graph-node-label">{data.label}</span>
-      <span className="graph-node-meta">API</span>
-      <Handle type="source" position={Position.Bottom} />
-    </div>
-  )
-}
-
-const nodeTypes = { file: FileNode, folder: FolderNode, external: ExternalNode, function: FunctionNode, api: ApiNode }
+const nodeTypes = { file: FileNode, folder: FolderNode, external: ExternalNode }
 
 function edgeColor(type) {
-  if (type === 'calls') return 'var(--success)'
-  if (type === 'route' || type === 'api_call') return 'var(--warning)'
-  return 'var(--accent)'
+  return type === 'calls' ? 'var(--success)' : 'var(--accent)'
 }
-
-const CONFIDENCE_DASH = { high: undefined, medium: '6 3', low: '2 3', unknown: '1 4' }
-const CONFIDENCE_OPACITY = { high: 0.55, medium: 0.5, low: 0.4, unknown: 0.3 }
 
 function GraphCanvas({ nodes, edges, direction, selectedNodeId, highlightedIds, onNodeClick, fitSignal, centerRequest }) {
   const { fitView, setCenter } = useReactFlow()
@@ -138,9 +111,6 @@ function GraphCanvas({ nodes, edges, direction, selectedNodeId, highlightedIds, 
         const dimmed = Boolean(
           highlightedIds && highlightedIds.size > 0 && !(highlightedIds.has(edge.source) && highlightedIds.has(edge.target)),
         )
-        // `confidence` is only present on flow-trace edges; graph/dependency
-        // edges fall back to their previous weight-based solid styling.
-        const confidence = edge.confidence
         return {
           id: edge.id,
           source: edge.source,
@@ -148,8 +118,8 @@ function GraphCanvas({ nodes, edges, direction, selectedNodeId, highlightedIds, 
           style: {
             stroke: edgeColor(edge.type),
             strokeWidth: Math.min(1 + Math.log2((edge.weight ?? 1) + 1), 4),
-            strokeDasharray: confidence ? CONFIDENCE_DASH[confidence] : edge.type === 'calls' ? '4 3' : undefined,
-            opacity: dimmed ? 0.12 : confidence ? CONFIDENCE_OPACITY[confidence] : 0.55,
+            strokeDasharray: edge.type === 'calls' ? '4 3' : undefined,
+            opacity: dimmed ? 0.12 : 0.55,
           },
         }
       }),

@@ -1,7 +1,7 @@
 """Change-impact analysis: reverse BFS over the same file-level relationship
-index the architecture/dependency graph and flow analyzer use (imports +
-resolved calls, collapsed to file granularity). No relationships are
-re-derived -- only reachability is computed here.
+index the architecture/dependency graph uses (imports + resolved calls,
+collapsed to file granularity). No relationships are re-derived -- only
+reachability is computed here.
 """
 
 from __future__ import annotations
@@ -10,8 +10,8 @@ import posixpath
 from collections import deque
 from pathlib import Path
 
-from app.flow.flow_resolver import extract_api_calls, match_route
 from app.graph.relationship_index import RelationshipIndex
+from app.impact.api_call_matcher import extract_api_calls, match_route
 from app.impact.impact_models import ImpactedFile, ImpactResponse, RelatedFile, RelatedRoute, RiskEstimate
 
 MAX_DEPTH = 6

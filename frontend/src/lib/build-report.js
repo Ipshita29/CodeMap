@@ -22,7 +22,6 @@ export function buildMarkdownReport({
   gitSummary,
   beginnerSummary,
   developerSummary,
-  lastFlow,
   lastImpact,
 }) {
   const lines = []
@@ -81,7 +80,7 @@ export function buildMarkdownReport({
       push('- No recognizable API routes were detected.')
     }
   } else {
-    push(NOT_GENERATED('Visit "Code Intelligence (Debug)" to generate it.'))
+    push(NOT_GENERATED('Visit the Architecture tab to generate it.'))
   }
   push('')
 
@@ -91,7 +90,7 @@ export function buildMarkdownReport({
     push(external.length ? `- External dependencies detected: ${external.length}` : '- No external dependencies detected.')
     if (external.length > 0) push(`- ${external.slice(0, 40).join(', ')}`)
   } else {
-    push(NOT_GENERATED('Visit "Code Intelligence (Debug)" to generate it.'))
+    push(NOT_GENERATED('Visit the Architecture tab to generate it.'))
   }
   push('')
 
@@ -135,16 +134,7 @@ export function buildMarkdownReport({
   }
   push('')
 
-  push('## Execution Flow / Impact Analysis', '')
-  if (lastFlow) {
-    push(`Last traced flow, starting from ${lastFlow.start.name}:`, '')
-    lastFlow.relationships.forEach((rel) => {
-      const sourceNode = lastFlow.flow.find((n) => n.id === rel.source)
-      const targetNode = lastFlow.flow.find((n) => n.id === rel.target)
-      push(`- ${sourceNode?.name ?? rel.source} -> ${targetNode?.name ?? rel.target} (${rel.type}, ${rel.confidence} confidence)`)
-    })
-    push('')
-  }
+  push('## Impact Analysis', '')
   if (lastImpact) {
     push(`Last impact analysis, for ${lastImpact.file}:`, '')
     push(`- Risk: ${lastImpact.risk.level.toUpperCase()} (${lastImpact.risk.score}/100)`)
@@ -152,9 +142,8 @@ export function buildMarkdownReport({
     push(`- Indirect dependents: ${lastImpact.indirect_dependents.map((d) => d.path).join(', ') || 'none'}`)
     if (lastImpact.summary) push('', lastImpact.summary)
     push('')
-  }
-  if (!lastFlow && !lastImpact) {
-    push('_No execution flow or impact analysis was run in this session. Visit the Architecture tab to generate one._', '')
+  } else {
+    push('_No impact analysis was run in this session. Visit the Architecture tab to generate one._', '')
   }
 
   push('---', '')
@@ -171,7 +160,6 @@ export function buildJsonExport({
   graph,
   beginnerSummary,
   developerSummary,
-  lastFlow,
   lastImpact,
 }) {
   return {
@@ -199,7 +187,6 @@ export function buildJsonExport({
     health: health ?? null,
     git: gitSummary ?? null,
     ai_summaries: { beginner: beginnerSummary ?? null, developer: developerSummary ?? null },
-    execution_flow: lastFlow ?? null,
     impact_analysis: lastImpact ?? null,
   }
 }

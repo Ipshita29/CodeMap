@@ -1,9 +1,6 @@
 from fastapi import APIRouter, HTTPException
 
 from app.analyzer.repository_analyzer import RepositoryAnalyzer
-from app.flow.flow_analyzer import FlowAnalyzerError
-from app.flow.flow_models import FlowRequest, FlowResponse
-from app.flow.flow_service import trace_execution_flow
 from app.graph.graph_service import build_repository_graph
 from app.impact.impact_analyzer import ImpactAnalyzerError
 from app.impact.impact_models import ImpactRequest, ImpactResponse
@@ -113,18 +110,6 @@ def get_repository_graph(focus: str | None = None) -> GraphResponse:
     except NoRepositoryImportedError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except RepositoryAnalysisError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-
-
-@router.post("/flow", response_model=FlowResponse)
-def get_execution_flow(payload: FlowRequest) -> FlowResponse:
-    try:
-        return trace_execution_flow(payload.start_file, payload.start_function, payload.query)
-    except NoRepositoryImportedError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    except RepositoryAnalysisError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
-    except FlowAnalyzerError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 

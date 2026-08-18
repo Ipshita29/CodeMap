@@ -16,8 +16,6 @@ import {
   fetchRepositoryGraph,
   fetchRepositoryHealth,
   generateRepositorySummary,
-  runCodeAnalysis,
-  traceExecutionFlow,
 } from '@/api'
 import { buildJsonExport, buildMarkdownReport, downloadBlob, downloadTextFile } from '@/lib/build-report'
 
@@ -35,32 +33,12 @@ const NODE_TYPE_FILTERS = [
 const MODE_LABELS = {
   architecture: 'Architecture',
   dependencies: 'Dependencies',
-  flow: 'Execution Flow',
   impact: 'Impact Analysis',
 }
 
 const MODE_PRESETS = {
   architecture: { relationshipFilter: { imports: true, calls: false }, direction: 'TB' },
   dependencies: { relationshipFilter: { imports: true, calls: true }, direction: 'LR' },
-}
-
-function flowNodeToGraphNode(n) {
-  return { id: n.id, type: n.type, data: { label: n.name, path: n.path, method: n.method } }
-}
-
-function flowToGraphData(flowResult) {
-  if (!flowResult) return { nodes: [], edges: [] }
-  return {
-    nodes: flowResult.flow.map(flowNodeToGraphNode),
-    edges: flowResult.relationships.map((r, i) => ({
-      id: `flow-${i}-${r.source}-${r.target}`,
-      source: r.source,
-      target: r.target,
-      type: r.type,
-      weight: 1,
-      confidence: r.confidence,
-    })),
-  }
 }
 
 function impactFileNode(path, impact) {
@@ -142,8 +120,6 @@ function ArchitectureTab() {
   const [selectedNode, setSelectedNode] = useState(null)
   const [fitSignal, setFitSignal] = useState(0)
   const [centerRequest, setCenterRequest] = useState(null)
-  const [flowQuery, setFlowQuery] = useState('')
-  const [flowFunction, setFlowFunction] = useState('')
   const queryClient = useQueryClient()
 
   const graphQuery = useQuery({
@@ -162,7 +138,6 @@ function ArchitectureTab() {
   })
 
   const explain = useMutation({ mutationFn: askRepositoryQuestion })
-  const flow = useMutation({ mutationFn: traceExecutionFlow })
   const impact = useMutation({ mutationFn: analyzeChangeImpact })
 
   function handleModeChange(nextMode) {
@@ -180,30 +155,6 @@ function ArchitectureTab() {
   function selectNode(node) {
     setSelectedNode(node)
     explain.reset()
-  }
-
-  function handleTraceFlow() {
-    const trimmedQuery = flowQuery.trim()
-    const payload = trimmedQuery
-      ? { query: trimmedQuery }
-      : selectedNode?.type === 'file'
-        ? { start_file: selectedNode.data.path, start_function: flowFunction.trim() || undefined }
-        : null
-
-    if (!payload) {
-      toast.error('Select a file in the tree, or describe a feature to trace.')
-      return
-    }
-
-    flow.mutate(payload, {
-      onSuccess: (data) => {
-        selectNode(flowNodeToGraphNode(data.start))
-        // Cached (not fetched) so the Export tab can include the last trace
-        // without re-running it -- a passive read, not a new request.
-        queryClient.setQueryData(['last-flow-result'], data)
-      },
-      onError: (error) => toast.error('Could not trace flow', { description: errorMessage(error) }),
-    })
   }
 
   function handleAnalyzeImpact() {
@@ -245,9 +196,6 @@ function ArchitectureTab() {
     setTypeFilter('all')
     if (MODE_PRESETS[mode]) setRelationshipFilter(MODE_PRESETS[mode].relationshipFilter)
     setSelectedNode(null)
-    setFlowQuery('')
-    setFlowFunction('')
-    flow.reset()
     impact.reset()
     explain.reset()
   }
@@ -289,11 +237,10 @@ function ArchitectureTab() {
     [rawNodes],
   )
 
-  const flowGraph = useMemo(() => flowToGraphData(flow.data), [flow.data])
   const impactGraph = useMemo(() => impactToGraphData(impact.data), [impact.data])
 
-  const displayedNodes = mode === 'flow' ? flowGraph.nodes : mode === 'impact' ? impactGraph.nodes : filteredNodes
-  const displayedEdges = mode === 'flow' ? flowGraph.edges : mode === 'impact' ? impactGraph.edges : filteredEdges
+  const displayedNodes = mode === 'impact' ? impactGraph.nodes : filteredNodes
+  const displayedEdges = mode === 'impact' ? impactGraph.edges : filteredEdges
   const direction = MODE_PRESETS[mode]?.direction ?? 'TB'
 
   if (graphQuery.isPending) {
@@ -355,29 +302,6 @@ function ArchitectureTab() {
           </>
         )}
 
-        {mode === 'flow' && (
-          <>
-            <input
-              className="input architecture-search"
-              type="text"
-              placeholder="Describe a feature, e.g. authentication…"
-              value={flowQuery}
-              onChange={(event) => setFlowQuery(event.target.value)}
-            />
-            <input
-              className="input architecture-search"
-              type="text"
-              placeholder="Start function (optional)"
-              value={flowFunction}
-              onChange={(event) => setFlowFunction(event.target.value)}
-              disabled={Boolean(flowQuery.trim())}
-            />
-            <button type="button" className="btn btn-primary" onClick={handleTraceFlow} disabled={flow.isPending}>
-              {flow.isPending ? 'Tracing…' : 'Trace Flow'}
-            </button>
-          </>
-        )}
-
         {mode === 'impact' && (
           <button type="button" className="btn btn-primary" onClick={handleAnalyzeImpact} disabled={impact.isPending}>
             {impact.isPending ? 'Analyzing…' : 'Analyze Impact'}
@@ -412,16 +336,6 @@ function ArchitectureTab() {
 
       {(mode === 'architecture' || mode === 'dependencies') && graphQuery.data.truncated && (
         <div className="architecture-banner">{graphQuery.data.message}</div>
-      )}
-
-      {mode === 'flow' && flow.isError && (
-        <div className="architecture-banner">{errorMessage(flow.error)}</div>
-      )}
-      {mode === 'flow' && flow.data?.message && <div className="architecture-banner">{flow.data.message}</div>}
-      {mode === 'flow' && !flow.data && !flow.isPending && !flow.isError && (
-        <div className="architecture-banner">
-          Select a file in the file tree (or describe a feature above) and click &ldquo;Trace Flow&rdquo;.
-        </div>
       )}
 
       {mode === 'impact' && impact.data && (
@@ -690,7 +604,6 @@ function ExportTab({ repositoryAnalysis }) {
   const summary = useMutation({ mutationFn: generateRepositorySummary })
   const pdfExport = useMutation({ mutationFn: exportPdf })
 
-  const lastFlow = queryClient.getQueryData(['last-flow-result']) ?? null
   const lastImpact = queryClient.getQueryData(['last-impact-result']) ?? null
 
   function collectData() {
@@ -701,7 +614,6 @@ function ExportTab({ repositoryAnalysis }) {
       gitSummary: gitQuery.data ?? null,
       beginnerSummary: summary.data?.beginner_summary ?? null,
       developerSummary: summary.data?.developer_summary ?? null,
-      lastFlow,
       lastImpact,
     }
   }
@@ -755,7 +667,7 @@ function ExportTab({ repositoryAnalysis }) {
     { label: 'Code intelligence & architecture', included: Boolean(codeIntelligenceQuery.data) },
     { label: 'Repository health', included: Boolean(healthQuery.data) },
     { label: 'Git history', included: Boolean(gitQuery.data?.has_git_history) },
-    { label: 'Execution flow / impact analysis', included: Boolean(lastFlow || lastImpact) },
+    { label: 'Impact analysis', included: Boolean(lastImpact) },
   ]
 
   return (
@@ -832,99 +744,6 @@ function FolderTreeView({ tree }) {
   )
 }
 
-function FileInspector({ filePath, data }) {
-  const functions = data.symbols.filter((symbol) => symbol.kind === 'function' && symbol.file === filePath)
-  const classes = data.symbols.filter((symbol) => symbol.kind === 'class' && symbol.file === filePath)
-  const imports = data.imports.filter((entry) => entry.file === filePath)
-  const exports = data.exports.filter((entry) => entry.file === filePath)
-  const relationships = data.relationships.filter(
-    (rel) => rel.source === filePath || rel.source.startsWith(`${filePath}::`),
-  )
-
-  return (
-    <div className="file-inspector">
-      <section>
-        <h3 className="panel-title">Functions</h3>
-        {functions.length > 0 ? (
-          <ul className="inspector-list">
-            {functions.map((fn) => (
-              <li key={`${fn.name}-${fn.start_line}`}>
-                {fn.name}
-                {fn.is_method && fn.class_name ? ` (${fn.class_name})` : ''}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="card-subtitle">None found.</p>
-        )}
-      </section>
-
-      <section>
-        <h3 className="panel-title">Classes</h3>
-        {classes.length > 0 ? (
-          <ul className="inspector-list">
-            {classes.map((cls) => (
-              <li key={cls.name}>
-                {cls.name}
-                {cls.methods.length > 0 ? ` — ${cls.methods.join(', ')}` : ''}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="card-subtitle">None found.</p>
-        )}
-      </section>
-
-      <section>
-        <h3 className="panel-title">Imports</h3>
-        {imports.length > 0 ? (
-          <ul className="inspector-list">
-            {imports.map((imp, index) => (
-              <li key={`${imp.source}-${index}`}>
-                {imp.source}
-                {imp.is_external ? ' (external)' : imp.resolved_target ? ` → ${imp.resolved_target}` : ' (unresolved)'}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="card-subtitle">None found.</p>
-        )}
-      </section>
-
-      <section>
-        <h3 className="panel-title">Exports</h3>
-        {exports.length > 0 ? (
-          <ul className="inspector-list">
-            {exports.map((exp, index) => (
-              <li key={`${exp.name}-${index}`}>
-                {exp.name} ({exp.kind})
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="card-subtitle">None found.</p>
-        )}
-      </section>
-
-      <section>
-        <h3 className="panel-title">Relationships</h3>
-        {relationships.length > 0 ? (
-          <ul className="inspector-list">
-            {relationships.map((rel, index) => (
-              <li key={index}>
-                {rel.type}
-                {rel.target ? ` → ${rel.target}` : rel.raw_callee ? ` → ${rel.raw_callee} (unresolved)` : ''}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="card-subtitle">None found.</p>
-        )}
-      </section>
-    </div>
-  )
-}
-
 function OverviewTab({ data }) {
   const { total_files, total_folders, languages, frameworks, folder_tree, statistics } = data
   const hasFolders = Object.keys(folder_tree).length > 0
@@ -989,107 +808,6 @@ function OverviewTab({ data }) {
         <h2 className="panel-title">Folder structure</h2>
         {hasFolders ? <FolderTreeView tree={folder_tree} /> : <p className="card-subtitle">No subfolders found.</p>}
       </div>
-    </>
-  )
-}
-
-function CodeIntelligenceTab() {
-  const [selectedFile, setSelectedFile] = useState('')
-  const queryClient = useQueryClient()
-  const { data, isPending, isError, error } = useQuery({
-    queryKey: ['code-intelligence'],
-    queryFn: fetchCodeIntelligence,
-    retry: false,
-  })
-  const runAnalysis = useMutation({
-    mutationFn: runCodeAnalysis,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['code-intelligence'] }),
-  })
-
-  function handleRun() {
-    runAnalysis.mutate(undefined, {
-      onSuccess: () => toast.success('Code intelligence analysis complete'),
-      onError: (err) => {
-        const message = err instanceof ApiError ? err.message : 'Something went wrong. Please try again.'
-        toast.error('Analysis failed', { description: message })
-      },
-    })
-  }
-
-  const notAnalyzedYet = isError && error instanceof ApiError && error.status === 404
-
-  return (
-    <>
-      <div className="button-row mb-6">
-        <button className="btn btn-primary" onClick={handleRun} disabled={runAnalysis.isPending}>
-          {runAnalysis.isPending ? 'Running…' : 'Run Analysis'}
-        </button>
-      </div>
-
-      {isPending && (
-        <div className="panel">
-          <p className="card-subtitle">Loading…</p>
-        </div>
-      )}
-
-      {notAnalyzedYet && (
-        <div className="panel">
-          <h2 className="panel-title">No analysis yet</h2>
-          <p className="card-subtitle">Click &ldquo;Run Analysis&rdquo; to parse this repository with Tree-sitter.</p>
-        </div>
-      )}
-
-      {isError && !notAnalyzedYet && (
-        <div className="panel">
-          <h2 className="panel-title">Could not load analysis</h2>
-          <p className="card-subtitle">{error.message}</p>
-        </div>
-      )}
-
-      {data && (
-        <>
-          <div className="stat-grid">
-            <div className="panel">
-              <p className="stat-label">Files parsed</p>
-              <p className="stat-value">{data.stats.files_parsed}</p>
-            </div>
-            <div className="panel">
-              <p className="stat-label">Functions</p>
-              <p className="stat-value">{data.symbols.filter((s) => s.kind === 'function').length}</p>
-            </div>
-            <div className="panel">
-              <p className="stat-label">Classes</p>
-              <p className="stat-value">{data.symbols.filter((s) => s.kind === 'class').length}</p>
-            </div>
-            <div className="panel">
-              <p className="stat-label">Imports</p>
-              <p className="stat-value">{data.imports.length}</p>
-            </div>
-            <div className="panel">
-              <p className="stat-label">Relationships</p>
-              <p className="stat-value">{data.relationships.length}</p>
-            </div>
-            <div className="panel">
-              <p className="stat-label">Routes</p>
-              <p className="stat-value">{data.routes.length}</p>
-            </div>
-          </div>
-
-          <div className="panel">
-            <h2 className="panel-title">Inspect a file</h2>
-            <select className="select" value={selectedFile} onChange={(event) => setSelectedFile(event.target.value)}>
-              <option value="">Select a file…</option>
-              {data.files.map((file) => (
-                <option key={file.path} value={file.path}>
-                  {file.path}
-                </option>
-              ))}
-            </select>
-
-            {selectedFile && <FileInspector filePath={selectedFile} data={data} />}
-          </div>
-        </>
-      )}
     </>
   )
 }
@@ -1222,13 +940,6 @@ export function AnalysisPage({ onBack, onViewInsights }) {
               >
                 Export
               </button>
-              <button
-                type="button"
-                className={tab === 'code-intelligence' ? 'mode-btn mode-btn-active' : 'mode-btn'}
-                onClick={() => setTab('code-intelligence')}
-              >
-                Code Intelligence (Debug)
-              </button>
             </div>
 
             {tab === 'overview' && <OverviewTab data={data} />}
@@ -1236,7 +947,6 @@ export function AnalysisPage({ onBack, onViewInsights }) {
             {tab === 'git' && <GitTab />}
             {tab === 'health' && <HealthTab />}
             {tab === 'export' && <ExportTab repositoryAnalysis={data} />}
-            {tab === 'code-intelligence' && <CodeIntelligenceTab />}
           </div>
         </main>
       </div>

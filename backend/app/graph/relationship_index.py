@@ -1,10 +1,10 @@
 """Shared file-level relationship index, built once from Day 3 code
-intelligence and reused by the graph builder, the execution-flow analyzer,
-and the change-impact analyzer.
+intelligence and reused by the graph builder, the impact analyzer, and the
+health analyzer.
 
-This is the "one repository knowledge layer" the graph, flow, and impact
-features all read from -- none of them re-derive relationships from raw
-Tree-sitter output independently.
+This is the "one repository knowledge layer" those features all read from --
+none of them re-derive relationships from raw Tree-sitter output
+independently.
 """
 
 from __future__ import annotations
@@ -15,10 +15,6 @@ from dataclasses import dataclass
 
 def symbol_file(sid: str) -> str:
     return sid.split("::", 1)[0]
-
-
-def symbol_name(sid: str) -> str:
-    return sid.split("::", 1)[1]
 
 
 def external_package_name(source: str, language: str) -> str:
@@ -38,21 +34,16 @@ class FileEdge:
 
 
 class RelationshipIndex:
-    """Indexes Day 3 code intelligence into fast lookups keyed by file and
-    by symbol, at both file-level (for the graph/impact traversal) and
-    symbol-level (for flow's call-chain tracing)."""
+    """Indexes Day 3 code intelligence into fast file-level lookups for
+    graph/impact traversal."""
 
     def __init__(self, intelligence: dict):
         self.intelligence = intelligence
         self.files_by_path = {f["path"]: f for f in intelligence["files"]}
         self.file_paths = set(self.files_by_path.keys())
-        self.symbols_by_id = {
-            f"{s['file']}::{s['name']}": s for s in intelligence["symbols"] if s["kind"] == "function"
-        }
 
         self.file_edges: dict[tuple[str, str, str], int] = {}
         self.external_by_file: dict[tuple[str, str], dict] = {}
-        self._calls_by_source: dict[str, list[dict]] = defaultdict(list)
         self._forward: dict[str, list[FileEdge]] = defaultdict(list)
         self._reverse: dict[str, list[FileEdge]] = defaultdict(list)
 
@@ -60,9 +51,6 @@ class RelationshipIndex:
 
     def _collect(self, intelligence: dict) -> None:
         for rel in intelligence["relationships"]:
-            if rel["type"] == "calls":
-                self._calls_by_source[rel["source"]].append(rel)
-
             if rel["type"] == "imports":
                 source, target = rel["source"], rel["target"]
                 if target and source in self.file_paths and target in self.file_paths and source != target:
@@ -96,22 +84,9 @@ class RelationshipIndex:
         key = (source, target, edge_type)
         self.file_edges[key] = self.file_edges.get(key, 0) + 1
 
-    # -- file-level queries (used by graph builder + impact analyzer) -----
-
     def forward(self, path: str) -> list[FileEdge]:
         return self._forward.get(path, [])
 
     def reverse(self, path: str) -> list[FileEdge]:
         """Files that depend on `path` (import it or call into it)."""
         return self._reverse.get(path, [])
-
-    # -- symbol-level queries (used by the flow analyzer) ------------------
-
-    def calls_from(self, sid: str) -> list[dict]:
-        return self._calls_by_source.get(sid, [])
-
-    def symbol(self, sid: str) -> dict | None:
-        return self.symbols_by_id.get(sid)
-
-    def find_function(self, file: str, name: str) -> dict | None:
-        return self.symbols_by_id.get(f"{file}::{name}")

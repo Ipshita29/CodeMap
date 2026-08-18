@@ -1,10 +1,10 @@
-"""Best-effort, regex-based detectors that feed the flow analyzer.
+"""Best-effort, regex-based frontend API-call detection, used by change-impact
+analysis to find frontend files that call an impacted backend route (the
+"related files" category).
 
 Mirrors `app/analyzer/import_extractor.py`'s approach: not AST-based, not
-claimed to be exhaustive, just good enough to seed real (verifiable)
-frontend -> backend edges. Every match records the source line so callers
-can attribute it to a specific function via that function's known
-start/end line range from Day 3 symbols.
+claimed to be exhaustive, just good enough to seed a real, verifiable
+frontend -> backend connection.
 """
 
 from __future__ import annotations
@@ -91,28 +91,3 @@ def match_route(method: str, path: str, routes: list[dict]) -> tuple[dict | None
             return route, "medium"
 
     return None, "unknown"
-
-
-def resolve_handler_name(handler: str) -> str:
-    """`router.post("/login", authController.login)` parses `handler` as
-    "authController.login" -- the symbol we actually want is "login"."""
-    if handler == "<inline>":
-        return handler
-    return handler.rsplit(".", 1)[-1]
-
-
-def score_file_for_query(path: str, symbols: list[dict], routes: list[dict], query: str) -> int:
-    """Simple keyword relevance score for resolving a free-text query like
-    'authentication' to a starting file -- substring matching only, no
-    embeddings/semantic search (explicitly out of scope for Day 6)."""
-    term = query.lower()
-    score = 0
-    if term in path.lower():
-        score += 3
-    for symbol in symbols:
-        if symbol["file"] == path and term in symbol["name"].lower():
-            score += 2
-    for route in routes:
-        if route["file"] == path and term in route["path"].lower():
-            score += 2
-    return score

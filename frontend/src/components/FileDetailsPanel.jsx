@@ -89,7 +89,7 @@ function GitHistorySection({ path }) {
 }
 
 export function FileDetailsPanel({ node, intelligence, onExplain, explain }) {
-  const detailsPath = node?.type === 'file' || node?.type === 'function' ? node.data.path : null
+  const detailsPath = node?.type === 'file' ? node.data.path : null
   const details = useMemo(() => computeFileDetails(detailsPath, intelligence), [detailsPath, intelligence])
 
   if (!node) {
@@ -119,34 +119,12 @@ export function FileDetailsPanel({ node, intelligence, onExplain, explain }) {
     )
   }
 
-  if (node.type === 'api') {
-    return (
-      <div className="file-details-panel">
-        <h3 className="panel-title">{node.data.label}</h3>
-        <p className="card-subtitle">API endpoint, detected from a frontend call or a backend route registration.</p>
-      </div>
-    )
-  }
-
-  if (node.type === 'function' && !node.data.path) {
-    return (
-      <div className="file-details-panel">
-        <h3 className="panel-title">{node.data.label}()</h3>
-        <p className="card-subtitle">
-          A call to this function was detected, but it could not be confidently resolved to a file in this
-          repository (likely a library, builtin, or dynamically-dispatched call).
-        </p>
-      </div>
-    )
-  }
-
   return (
     <div className="file-details-panel">
-      <h3 className="panel-title">{node.type === 'function' ? `${node.data.label}()` : node.data.label}</h3>
+      <h3 className="panel-title">{node.data.label}</h3>
       <p className="details-path">{node.data.path}</p>
 
       <div className="details-tags">
-        {node.type === 'function' && <span className="tag">function</span>}
         {node.data.impact && <span className="tag">{IMPACT_LABELS[node.data.impact]}</span>}
         {node.data.language && <span className="tag">{node.data.language}</span>}
         {node.data.lines != null && <span className="tag">{node.data.lines} lines</span>}

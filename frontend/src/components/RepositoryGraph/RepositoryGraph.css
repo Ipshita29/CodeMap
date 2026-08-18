@@ -82,15 +82,6 @@
   border-style: dashed;
 }
 
-.graph-node-function {
-  border-left: 3px solid var(--warning);
-}
-
-.graph-node-api {
-  border-left: 3px solid var(--destructive);
-  border-style: dashed;
-}
-
 .graph-node-selected {
   border-color: var(--ring);
   box-shadow: 0 0 0 2px var(--ring);
