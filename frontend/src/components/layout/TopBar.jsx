@@ -1,4 +1,4 @@
-import { ExportMenu } from '@/components/ExportMenu'
+import { ExportMenu } from '@/components/export/ExportMenu'
 
 export function TopBar({ repositoryAnalysis, onAskCodeMap, onImportAnother }) {
   return (

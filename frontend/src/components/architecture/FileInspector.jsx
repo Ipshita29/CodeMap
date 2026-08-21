@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
 import { fetchFileGitHistory } from '@/api'
-import './FileDetailsPanel.css'
+import './FileInspector.css'
 
 function computeFileDetails(path, intelligence) {
   if (!intelligence) return null
@@ -88,7 +88,7 @@ function GitHistorySection({ path }) {
   )
 }
 
-export function FileDetailsPanel({ node, intelligence, onExplain, explain }) {
+export function FileInspector({ node, intelligence, onExplain, explain }) {
   const detailsPath = node?.type === 'file' ? node.data.path : null
   const details = useMemo(() => computeFileDetails(detailsPath, intelligence), [detailsPath, intelligence])
 

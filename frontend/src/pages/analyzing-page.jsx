@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
-import { AnalysisProgress } from '@/components/AnalysisProgress'
+import { AnalysisProgress } from '@/components/repository/AnalysisProgress'
 import { fetchRepositoryAnalysis } from '@/api'
 
 export function AnalyzingPage({ repositoryName, onReady, onBack }) {

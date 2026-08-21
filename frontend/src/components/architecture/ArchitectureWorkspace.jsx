@@ -2,8 +2,8 @@ import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
-import { RepositoryGraph } from '@/components/RepositoryGraph/RepositoryGraph'
-import { FileDetailsPanel } from '@/components/FileDetailsPanel'
+import { RepositoryGraph } from '@/components/architecture/RepositoryGraph/RepositoryGraph'
+import { FileInspector } from '@/components/architecture/FileInspector'
 import {
   analyzeChangeImpact,
   ApiError,
@@ -391,7 +391,7 @@ export function ArchitectureWorkspace() {
               centerRequest={centerRequest}
             />
 
-            <FileDetailsPanel
+            <FileInspector
               node={selectedNode}
               intelligence={intelligenceQuery.data}
               onExplain={handleExplain}

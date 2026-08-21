@@ -1,14 +1,14 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 
-import { AppShell } from '@/components/AppShell'
-import { Sidebar } from '@/components/Sidebar'
-import { TopBar } from '@/components/TopBar'
-import { AskCodeMap } from '@/components/AskCodeMap'
-import { RepositoryOverview } from '@/components/RepositoryOverview'
-import { ArchitectureWorkspace } from '@/components/ArchitectureWorkspace'
-import { GitHistory } from '@/components/GitHistory'
-import { HealthDashboard } from '@/components/HealthDashboard'
+import { AppShell } from '@/components/layout/AppShell'
+import { Sidebar } from '@/components/layout/Sidebar'
+import { TopBar } from '@/components/layout/TopBar'
+import { AskCodeMap } from '@/components/ai/AskCodeMap'
+import { RepositoryOverview } from '@/components/repository/RepositoryOverview'
+import { ArchitectureWorkspace } from '@/components/architecture/ArchitectureWorkspace'
+import { GitHistory } from '@/components/git/GitHistory'
+import { HealthDashboard } from '@/components/health/HealthDashboard'
 import { fetchRepositoryAnalysis } from '@/api'
 
 export function WorkspacePage({ onImportAnother }) {

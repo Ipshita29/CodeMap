@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Code2, Loader2, Sparkles } from 'lucide-react'
 
 import { ApiError, fetchGitSummary, generateRepositorySummary } from '@/api'
-import { AskCodeMapPanel } from '@/components/AskCodeMapPanel'
+import { AskCodeMapPanel } from '@/components/ai/AskCodeMap'
 import { getFrameworkIcon, getLanguageIcon } from '@/lib/tech-icons'
 import {
   buildInsights,
