@@ -16,40 +16,63 @@
   color: var(--foreground);
 }
 
-.structure-summary-list {
+.structure-tree {
   margin: 0 0 1rem;
   padding: 0;
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: 0.375rem;
 }
 
-.structure-summary-row {
+.structure-tree-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  font-size: 0.875rem;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  padding: 0.25rem 0;
 }
 
-.structure-summary-name {
+.structure-tree-icon {
+  flex-shrink: 0;
+  color: var(--muted);
+}
+
+.structure-tree-name {
+  flex: 1;
   font-family: var(--font-mono);
   color: var(--foreground);
-}
-
-.structure-summary-count {
-  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.insight-list {
+.structure-tree-count {
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Engineering signals sits right below the carousel -- a touch tighter than
+   a standalone .overview-block so the page doesn't grow taller than the
+   carousel above it already makes it. */
+
+.overview-block-tight {
+  padding-top: 1.125rem;
+}
+
+.overview-block-tight h2 {
+  margin-bottom: 0.75rem;
+}
+
+.insight-grid {
   margin: 0;
   padding: 0;
   list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.125rem 1.75rem;
 }
 
 .insight-item {
@@ -222,15 +245,7 @@
   white-space: pre-wrap;
 }
 
-/* Tech stack */
-
-.tech-stack {
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-}
-
-.tech-category-label {
+.tech-group-label {
   margin: 0 0 0.625rem;
   font-size: 0.75rem;
   font-weight: 600;
@@ -239,52 +254,213 @@
   color: var(--muted);
 }
 
-.tech-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
-  gap: 0.625rem;
+.pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
-.tech-chip {
-  display: flex;
+.tech-pill {
+  display: inline-flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 0.5rem 0.625rem;
+  gap: 0.375rem;
   border: 1px solid var(--card-border);
-  border-radius: 0.5rem;
-  padding: 0.625rem 0.75rem;
+  border-radius: 999px;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--foreground);
   background: var(--background);
 }
 
-.tech-chip-icon {
-  display: inline-flex;
+.tech-pill svg {
   flex-shrink: 0;
+  color: var(--muted);
+}
+
+/* On-demand AI summary -- deliberately the least prominent card state until
+   the user clicks Generate; nothing here fires just from viewing Overview. */
+
+.summary-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+/* Repository Intelligence carousel -- three panels (Tech Stack, Repository
+   Structure, Understand this repository) sharing one hover-driven flex row.
+   Repository Structure is the default focus; hovering (or tab-focusing) a
+   card reassigns flex-grow via inline style in JS -- this stylesheet only
+   handles the transition and the focused/dim visual treatment, never the
+   grow values themselves. */
+
+.intel-eyebrow {
+  margin: 0 0 1rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+}
+
+.intelligence-carousel {
+  display: flex;
+  gap: 1.25rem;
+  align-items: stretch;
+}
+
+.intel-card {
+  flex-basis: 0;
+  min-width: 0;
+  height: 26rem;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--card-border);
+  border-radius: 1rem;
+  padding: 1.5rem;
+  background: var(--card);
+  cursor: default;
+  transition: flex-grow 420ms cubic-bezier(0.22, 1, 0.36, 1), border-color 280ms ease;
+}
+
+.intel-card:focus-visible {
+  outline: 2px solid var(--ring, var(--accent));
+  outline-offset: 2px;
+}
+
+.intel-card-focused {
+  border-color: var(--accent);
+}
+
+.intel-card-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+  margin-bottom: 1.125rem;
+}
+
+.intel-card-icon {
+  flex-shrink: 0;
+  color: var(--muted);
+  transition: color 280ms ease;
+}
+
+.intel-card-focused .intel-card-icon {
+  color: var(--accent);
+}
+
+.intel-title {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--muted);
+  transition: color 280ms ease;
+}
+
+.intel-card-focused .intel-title {
   color: var(--foreground);
 }
 
-.tech-chip-name {
+.intel-card-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  opacity: 0.82;
+  transition: opacity 280ms ease;
+}
+
+.intel-card-focused .intel-card-body {
+  opacity: 1;
+}
+
+.intel-footer-link {
+  flex-shrink: 0;
+  margin-top: 1rem;
+}
+
+/* Tech stack panel */
+
+.intel-lang-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.intel-lang-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.375rem;
+  text-align: center;
+  border: 1px solid var(--card-border);
+  border-radius: 0.625rem;
+  padding: 0.875rem 0.5rem;
+  background: var(--background);
+}
+
+.intel-lang-name {
   font-size: 0.8125rem;
   font-weight: 500;
   color: var(--foreground);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 100%;
 }
 
-.tech-chip-meta {
-  width: 100%;
+.intel-lang-percent {
   font-size: 0.6875rem;
+  font-family: var(--font-mono);
   color: var(--muted);
 }
 
-/* On-demand AI summary -- deliberately the least prominent section on the
-   page; nothing here renders until the user clicks Generate Summary. */
+.intel-pill-section + .intel-pill-section {
+  margin-top: 1.125rem;
+}
 
-.summary-loading {
+/* Repository structure panel reuses .structure-tree* (see above). */
+
+/* AI summary panel */
+
+.intel-ai-empty {
   display: flex;
-  align-items: center;
-  gap: 0.625rem;
-  margin-top: 0.75rem;
-  font-size: 0.875rem;
-  color: var(--muted);
+  flex-direction: column;
+  align-items: flex-start;
+  margin: auto 0;
+}
+
+.intel-summary-text {
+  font-size: 0.8125rem;
+}
+
+@media (max-width: 60rem) {
+  .intel-card {
+    height: 24rem;
+  }
+
+  .insight-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 40rem) {
+  .intelligence-carousel {
+    flex-direction: column;
+  }
+
+  .intel-card {
+    flex: none !important;
+    width: 100%;
+    height: auto;
+    min-height: 20rem;
+  }
+
+  .intel-lang-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }

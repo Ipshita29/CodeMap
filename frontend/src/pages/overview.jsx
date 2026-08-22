@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Code2, Loader2, Sparkles } from 'lucide-react'
+import { Code2, Folder, FolderTree, Layers, Loader2, Sparkles } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   SiAngular,
@@ -123,6 +123,53 @@ function getFrameworkIcon(name) {
   return FRAMEWORK_ICONS[name] ?? null
 }
 
+// Original Simple Icons brand hex per technology, limited to values with
+// enough contrast against the app's near-black background -- a handful of
+// brand marks (Next.js, Express, Flask, Django, NumPy, Pandas...) are
+// black or near-black and would be invisible here, so those are left
+// unmapped and just keep the default muted icon treatment instead.
+const BRAND_COLORS = {
+  Python: '#3776AB',
+  JavaScript: '#F7DF1E',
+  TypeScript: '#3178C6',
+  HTML: '#E34F26',
+  CSS: '#1572B6',
+  SCSS: '#CC6699',
+  Sass: '#CC6699',
+  Less: '#1D365D',
+  Shell: '#4EAA25',
+  Go: '#00ADD8',
+  Ruby: '#CC342D',
+  PHP: '#777BB4',
+  Kotlin: '#7F52FF',
+  Swift: '#F05138',
+  C: '#A8B9CC',
+  'C++': '#00599C',
+  Dart: '#0175C2',
+  Vue: '#4FC08D',
+  Svelte: '#FF3E00',
+  React: '#61DAFB',
+  Vite: '#646CFF',
+  Axios: '#5A29E4',
+  Mongoose: '#880000',
+  'Vue.js': '#4FC08D',
+  Angular: '#DD0031',
+  NestJS: '#E0234E',
+  'Tailwind CSS': '#06B6D4',
+  'React Query': '#FF4154',
+  FastAPI: '#009688',
+  SQLAlchemy: '#D71F00',
+  Pydantic: '#E92063',
+  GitPython: '#F05032',
+  'PHP (Composer)': '#885630',
+  'Java (Maven)': '#C71A36',
+  'Dart/Flutter': '#02569B',
+}
+
+function getBrandColor(name) {
+  return BRAND_COLORS[name]
+}
+
 const FRAMEWORK_CATEGORY = {
   React: 'Frameworks',
   'Next.js': 'Frameworks',
@@ -161,8 +208,23 @@ function groupFrameworksByCategory(frameworks) {
   return CATEGORY_ORDER.filter((category) => groups.has(category)).map((category) => [category, groups.get(category)])
 }
 
-function TechIcon({ icon: Icon }) {
-  return Icon ? <Icon size={18} /> : <Code2 size={18} />
+function TechIcon({ icon: Icon, size = 18, color }) {
+  const style = color ? { color } : undefined
+  return Icon ? <Icon size={size} style={style} /> : <Code2 size={size} style={style} />
+}
+
+// Overview's compact tech-stack presentation groups everything that isn't
+// tooling under one "Frameworks & Libraries" heading -- the Frameworks vs.
+// Libraries vs. Infrastructure split from groupFrameworksByCategory is more
+// granularity than a glanceable pill row needs.
+function mergeFrameworkGroups(frameworkGroups) {
+  const merged = new Map()
+  for (const [category, names] of frameworkGroups) {
+    const label = category === 'Tooling' ? 'Tooling' : 'Frameworks & Libraries'
+    if (!merged.has(label)) merged.set(label, [])
+    merged.get(label).push(...names)
+  }
+  return [...merged.entries()]
 }
 
 const SUMMARY_LOADING_PHRASES = ['Analyzing architecture…', 'Understanding major modules…', 'Connecting dependencies…', 'Building explanation…']
@@ -287,8 +349,40 @@ function AskCodeMapPanel({ data, autoFocus = false, suggestionsLabel = 'Suggeste
   )
 }
 
+// Hover-driven flex-grow per card, keyed by which card currently has focus.
+// Repository structure is the default focus (center, slightly larger) --
+// hovering (or tab-focusing) a card reassigns focus to it; leaving the
+// carousel entirely falls back to 'structure'. Values stay close together
+// on purpose (0.85-1.3) so the three cards always read as one composition
+// rather than one card ballooning over the other two.
+const FOCUS_GROW = {
+  tech: { tech: 1.3, structure: 0.9, ai: 0.85 },
+  structure: { tech: 0.88, structure: 1.28, ai: 0.88 },
+  ai: { tech: 0.85, structure: 0.9, ai: 1.3 },
+}
+
+function IntelligenceCard({ id, focused, onFocus, headerIcon: HeaderIcon, title, children, footer }) {
+  return (
+    <div
+      className={`intel-card${focused === id ? ' intel-card-focused' : ''}`}
+      style={{ flexGrow: FOCUS_GROW[focused][id] }}
+      onMouseEnter={() => onFocus(id)}
+      onFocus={() => onFocus(id)}
+      tabIndex={0}
+    >
+      <div className="intel-card-header">
+        <HeaderIcon size={16} className="intel-card-icon" />
+        <h3 className="intel-title">{title}</h3>
+      </div>
+      <div className="intel-card-body">{children}</div>
+      {footer}
+    </div>
+  )
+}
+
 export function RepositoryOverview({ data, onExploreStructure, askPrefill }) {
   const [summaryMode, setSummaryMode] = useState('beginner')
+  const [focusedCard, setFocusedCard] = useState('structure')
   const askSectionRef = useRef(null)
 
   // Other pages hand this a { question, key } via onAskAbout -- scrolling
@@ -316,7 +410,7 @@ export function RepositoryOverview({ data, onExploreStructure, askPrefill }) {
   const { total_files, total_folders, frameworks, statistics } = data
   const topFolders = computeTopFolders(data.files)
   const languageBreakdown = computeLanguageBreakdown(data.files)
-  const frameworkGroups = groupFrameworksByCategory(frameworks)
+  const frameworkGroups = mergeFrameworkGroups(groupFrameworksByCategory(frameworks))
   const insights = buildInsights(data, gitSummary.data, null)
   const contributors = gitSummary.data?.has_git_history ? gitSummary.data.activity.contributors : null
 
@@ -356,71 +450,128 @@ export function RepositoryOverview({ data, onExploreStructure, askPrefill }) {
         )}
       </div>
 
-      <section className="overview-block">
-        <h2>Tech stack</h2>
-        {languageBreakdown.length > 0 || frameworkGroups.length > 0 ? (
-          <div className="tech-stack">
-            {languageBreakdown.length > 0 && (
-              <div className="tech-category">
-                <p className="tech-category-label">Languages</p>
-                <div className="tech-grid">
-                  {languageBreakdown.map(({ language, percent }) => (
-                    <div key={language} className="tech-chip">
-                      <span className="tech-chip-icon">
-                        <TechIcon icon={getLanguageIcon(language)} />
-                      </span>
-                      <span className="tech-chip-name">{language}</span>
-                      <span className="tech-chip-meta">{percent}% of code</span>
+      <section className="overview-block intelligence-block">
+        <p className="intel-eyebrow">Repository intelligence</p>
+        <div className="intelligence-carousel" onMouseLeave={() => setFocusedCard('structure')}>
+          <IntelligenceCard id="tech" focused={focusedCard} onFocus={setFocusedCard} headerIcon={Layers} title="Tech stack">
+            {languageBreakdown.length > 0 || frameworkGroups.length > 0 ? (
+              <>
+                {languageBreakdown.length > 0 && (
+                  <div className="intel-lang-grid">
+                    {languageBreakdown.map(({ language, percent }) => (
+                      <div key={language} className="intel-lang-tile">
+                        <TechIcon icon={getLanguageIcon(language)} size={22} color={getBrandColor(language)} />
+                        <span className="intel-lang-name">{language}</span>
+                        <span className="intel-lang-percent">{percent}%</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {frameworkGroups.map(([category, names]) => (
+                  <div key={category} className="intel-pill-section">
+                    <p className="tech-group-label">{category}</p>
+                    <div className="pill-row">
+                      {names.map((name) => (
+                        <span key={name} className="tech-pill">
+                          <TechIcon icon={getFrameworkIcon(name)} size={14} color={getBrandColor(name)} />
+                          {name}
+                        </span>
+                      ))}
                     </div>
-                  ))}
-                </div>
+                  </div>
+                ))}
+              </>
+            ) : (
+              <p className="card-subtitle">No recognized languages or frameworks found.</p>
+            )}
+          </IntelligenceCard>
+
+          <IntelligenceCard
+            id="structure"
+            focused={focusedCard}
+            onFocus={setFocusedCard}
+            headerIcon={FolderTree}
+            title="Repository structure"
+            footer={
+              <button type="button" className="link-button intel-footer-link" onClick={onExploreStructure}>
+                Explore structure →
+              </button>
+            }
+          >
+            {topFolders.length > 0 ? (
+              <ul className="structure-tree">
+                {topFolders.map(([name, count]) => (
+                  <li key={name} className="structure-tree-row">
+                    <Folder size={13} className="structure-tree-icon" />
+                    <span className="structure-tree-name">{name === '(root)' ? name : `${name}/`}</span>
+                    <span className="structure-tree-count">{count}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="card-subtitle">No files found.</p>
+            )}
+          </IntelligenceCard>
+
+          <IntelligenceCard
+            id="ai"
+            focused={focusedCard}
+            onFocus={setFocusedCard}
+            headerIcon={Sparkles}
+            title={summary.data && !summary.isFetching ? 'AI repository brief' : 'Understand this repository'}
+          >
+            {!summary.data && !summary.isFetching && (
+              <div className="intel-ai-empty">
+                <p className="card-subtitle">
+                  Get an AI-generated explanation of the architecture, important modules, and how the major pieces
+                  work together.
+                </p>
+                <button type="button" className="btn btn-outline mt-3" onClick={() => summary.refetch()}>
+                  Generate AI brief →
+                </button>
+                {summary.isError && (
+                  <p className="field-error mt-3">Could not generate a summary: {errorMessage(summary.error)}</p>
+                )}
               </div>
             )}
 
-            {frameworkGroups.map(([category, names]) => (
-              <div key={category} className="tech-category">
-                <p className="tech-category-label">{category}</p>
-                <div className="tech-grid">
-                  {names.map((name) => (
-                    <div key={name} className="tech-chip">
-                      <span className="tech-chip-icon">
-                        <TechIcon icon={getFrameworkIcon(name)} />
-                      </span>
-                      <span className="tech-chip-name">{name}</span>
-                    </div>
-                  ))}
+            {summary.isFetching && <SummaryLoadingState />}
+
+            {summary.data && !summary.isFetching && (
+              <>
+                <div className="mode-toggle">
+                  <button
+                    type="button"
+                    className={summaryMode === 'beginner' ? 'mode-btn mode-btn-active' : 'mode-btn'}
+                    onClick={() => setSummaryMode('beginner')}
+                  >
+                    Beginner
+                  </button>
+                  <button
+                    type="button"
+                    className={summaryMode === 'developer' ? 'mode-btn mode-btn-active' : 'mode-btn'}
+                    onClick={() => setSummaryMode('developer')}
+                  >
+                    Developer
+                  </button>
                 </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <p className="card-subtitle">No recognized languages or frameworks found.</p>
-        )}
+                <p className="summary-text intel-summary-text">
+                  {summaryMode === 'beginner' ? summary.data.beginner_summary : summary.data.developer_summary}
+                </p>
+                <button type="button" className="link-button mt-3" onClick={() => summary.refetch()}>
+                  Regenerate
+                </button>
+              </>
+            )}
+          </IntelligenceCard>
+        </div>
       </section>
 
-      <section className="overview-block">
-        <h2>Repository structure</h2>
-        {topFolders.length > 0 ? (
-          <ul className="structure-summary-list">
-            {topFolders.map(([name, count]) => (
-              <li key={name} className="structure-summary-row">
-                <span className="structure-summary-name">{name === '(root)' ? name : `${name}/`}</span>
-                <span className="structure-summary-count">{count} files</span>
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="card-subtitle">No files found.</p>
-        )}
-        <button type="button" className="link-button" onClick={onExploreStructure}>
-          Explore structure →
-        </button>
-      </section>
-
-      <section className="overview-block">
-        <h2>Key insights</h2>
+      <section className="overview-block overview-block-tight">
+        <h2>Engineering signals</h2>
         {insights.length > 0 ? (
-          <ol className="insight-list">
+          <ol className="insight-grid">
             {insights.map((insight, index) => (
               <li key={insight.title} className="insight-item">
                 <span className="insight-index">{String(index + 1).padStart(2, '0')}</span>
@@ -433,53 +584,6 @@ export function RepositoryOverview({ data, onExploreStructure, askPrefill }) {
           </ol>
         ) : (
           <p className="card-subtitle">Nothing notable surfaced yet.</p>
-        )}
-      </section>
-
-      <section className="overview-block summary-block">
-        <h2>AI Repository Summary</h2>
-        {!summary.data && !summary.isFetching && (
-          <>
-            <p className="card-subtitle">
-              Generate a detailed explanation of this repository, including its purpose, architecture, important
-              modules and how the major pieces work together.
-            </p>
-            <button type="button" className="btn btn-outline mt-3" onClick={() => summary.refetch()}>
-              Generate Summary
-            </button>
-            {summary.isError && (
-              <p className="field-error mt-3">Could not generate a summary: {errorMessage(summary.error)}</p>
-            )}
-          </>
-        )}
-
-        {summary.isFetching && <SummaryLoadingState />}
-
-        {summary.data && !summary.isFetching && (
-          <>
-            <div className="mode-toggle mt-3">
-              <button
-                type="button"
-                className={summaryMode === 'beginner' ? 'mode-btn mode-btn-active' : 'mode-btn'}
-                onClick={() => setSummaryMode('beginner')}
-              >
-                Beginner
-              </button>
-              <button
-                type="button"
-                className={summaryMode === 'developer' ? 'mode-btn mode-btn-active' : 'mode-btn'}
-                onClick={() => setSummaryMode('developer')}
-              >
-                Developer
-              </button>
-            </div>
-            <p className="summary-text">
-              {summaryMode === 'beginner' ? summary.data.beginner_summary : summary.data.developer_summary}
-            </p>
-            <button type="button" className="btn btn-outline mt-3" onClick={() => summary.refetch()}>
-              Regenerate
-            </button>
-          </>
         )}
       </section>
     </div>
