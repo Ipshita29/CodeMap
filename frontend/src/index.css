@@ -91,7 +91,13 @@ body {
 
 .workspace-shell {
   display: flex;
-  min-height: 100vh;
+  /* Bounded (not min-) height + overflow:hidden is what makes
+     .workspace-main's own overflow-y:auto the actual scroll container --
+     with only a min-height, the shell (and the sidebar stretching to match
+     it) just grows past the viewport with long page content, taking the
+     nav tiles and repository selector out of view along with it. */
+  height: 100vh;
+  overflow: hidden;
   background-color: var(--background);
 }
 
@@ -102,6 +108,7 @@ body {
   flex-direction: column;
   gap: 1.5rem;
   padding: 1.5rem 1rem;
+  background: #0d0e11;
   border-right: 1px solid var(--card-border);
 }
 
@@ -115,59 +122,140 @@ body {
 .sidebar-nav {
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
-}
-
-.sidebar-nav-group {
-  display: flex;
-  flex-direction: column;
+  gap: 0.75rem;
 }
 
 .sidebar-group-label {
-  margin: 0 0 0.375rem;
+  margin: 0;
   padding: 0 0.5rem;
   font-size: 0.6875rem;
   font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--muted);
+  letter-spacing: 0.12em;
+  color: #9491a8;
 }
 
-.sidebar-link {
+/* Stacked-tile navigation -- repository destinations only (Ask CodeMap
+   lives on Overview instead, see components/ai/AskCodeMapPanel.jsx), each
+   its own compact card rather than a plain nav row. Every accent variant
+   sets the same three custom properties, so the tile rule itself (border,
+   hover lift, active state) is written once. */
+
+.sidebar-tiles {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.sidebar-tile {
+  --tile-tint: rgba(255, 255, 255, 0.015);
+  --tile-tint-hover: rgba(255, 255, 255, 0.03);
+  --tile-border: #22242b;
+  --tile-accent: #8b8d98;
+
   display: flex;
   align-items: center;
   gap: 0.625rem;
   width: 100%;
-  border: none;
-  background: none;
-  border-radius: 0.375rem;
-  padding: 0.5rem 0.625rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  color: var(--muted);
+  border: 1px solid var(--tile-border);
+  border-radius: 0.625rem;
+  background: linear-gradient(var(--tile-tint), var(--tile-tint)), #111318;
+  padding: 0.5625rem 0.6875rem;
   cursor: pointer;
   text-align: left;
-  transition: background-color 0.15s, color 0.15s;
+  transition: transform 200ms ease-out, border-color 200ms ease-out, background-color 200ms ease-out, box-shadow 200ms ease-out;
 }
 
-.sidebar-link:hover {
-  color: var(--foreground);
-  background: rgba(255, 255, 255, 0.03);
+.sidebar-tile:hover,
+.sidebar-tile:focus-visible {
+  transform: translateY(-1.5px);
+  border-color: var(--tile-accent);
+  background: linear-gradient(var(--tile-tint-hover), var(--tile-tint-hover)), #111318;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.28);
+  outline: none;
 }
 
-.sidebar-link-active {
-  color: var(--foreground);
-  background: rgba(110, 123, 242, 0.12);
-}
-
-.sidebar-link-active:hover {
-  background: rgba(110, 123, 242, 0.16);
-}
-
-.sidebar-link-icon {
+.sidebar-tile-icon {
   display: inline-flex;
   flex-shrink: 0;
-  opacity: 0.85;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.5rem;
+  background: var(--tile-tint-hover);
+  color: var(--tile-accent);
+  transition: color 200ms ease-out;
+}
+
+.sidebar-tile-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.sidebar-tile-label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #c7c8d1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 200ms ease-out;
+}
+
+.sidebar-tile:hover .sidebar-tile-label,
+.sidebar-tile:focus-visible .sidebar-tile-label,
+.sidebar-tile-active .sidebar-tile-label {
+  color: #f4f4f5;
+}
+
+.sidebar-tile-active {
+  border-color: var(--tile-accent);
+  background: linear-gradient(var(--tile-tint-hover), var(--tile-tint-hover)), #111318;
+  box-shadow: inset 2px 0 0 var(--tile-accent), 0 0 0 1px rgba(0, 0, 0, 0) , 0 8px 20px rgba(0, 0, 0, 0.22);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-tile {
+    transition: border-color 120ms ease-out, background-color 120ms ease-out;
+  }
+  .sidebar-tile:hover,
+  .sidebar-tile:focus-visible {
+    transform: none;
+  }
+}
+
+/* Per-feature color identity -- a subtle tint/border/icon accent, never a
+   saturated fill. The sidebar stays dark; color is used sparingly to tell
+   the four tiles apart at a glance. */
+
+.sidebar-tile-teal {
+  --tile-tint: rgba(15, 61, 61, 0.4);
+  --tile-tint-hover: rgba(15, 61, 61, 0.6);
+  --tile-border: rgba(45, 212, 191, 0.16);
+  --tile-accent: #5eead4;
+}
+
+.sidebar-tile-blue {
+  --tile-tint: rgba(18, 53, 91, 0.4);
+  --tile-tint-hover: rgba(18, 53, 91, 0.6);
+  --tile-border: rgba(96, 165, 250, 0.16);
+  --tile-accent: #7dabfb;
+}
+
+.sidebar-tile-amber {
+  --tile-tint: rgba(74, 50, 24, 0.4);
+  --tile-tint-hover: rgba(74, 50, 24, 0.6);
+  --tile-border: rgba(217, 166, 92, 0.16);
+  --tile-accent: #d9a65c;
+}
+
+.sidebar-tile-green {
+  --tile-tint: rgba(18, 58, 44, 0.4);
+  --tile-tint-hover: rgba(18, 58, 44, 0.6);
+  --tile-border: rgba(52, 211, 153, 0.16);
+  --tile-accent: #4ade80;
 }
 
 .sidebar-spacer {
@@ -179,9 +267,57 @@ body {
   padding-top: 1rem;
 }
 
+.sidebar-repo {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.625rem;
+  background: #111318;
+  padding: 0.625rem 0.75rem;
+  transition: border-color 200ms ease-out, background-color 200ms ease-out;
+}
+
+.sidebar-repo:hover {
+  border-color: #33353e;
+  background: #15171c;
+}
+
+.sidebar-repo-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 0.125rem;
+}
+
+.sidebar-repo-name {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #c7c8d1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-repo-label {
+  font-size: 0.6875rem;
+  color: #62646e;
+}
+
+.sidebar-repo-dot {
+  flex-shrink: 0;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 9999px;
+  background: var(--success);
+  box-shadow: 0 0 0 3px rgba(52, 211, 153, 0.14);
+}
+
 .workspace-body {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
@@ -262,16 +398,27 @@ body {
 
   .sidebar-nav {
     flex-direction: row;
+    align-items: center;
     flex-wrap: wrap;
     gap: 0.5rem;
   }
 
-  .sidebar-nav-group {
-    display: contents;
-  }
-
   .sidebar-group-label {
     display: none;
+  }
+
+  .sidebar-tiles {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  /* All four stay reachable in the compact row. width:100% from the base
+     (vertical-stack) rule would otherwise win out as this flex item's
+     basis and force one tile per line regardless of flex-wrap. */
+  .sidebar-tile {
+    width: auto;
+    flex: 0 0 auto;
   }
 
   .sidebar-spacer {
@@ -281,6 +428,10 @@ body {
   .sidebar-footer {
     border-top: none;
     padding-top: 0;
+  }
+
+  .sidebar-repo {
+    width: auto;
   }
 
   .workspace-main {
@@ -981,6 +1132,13 @@ body {
   white-space: nowrap;
 }
 
+.hotspot-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  flex-shrink: 0;
+}
+
 /* Health tab */
 
 .health-score-hero {
@@ -1438,6 +1596,17 @@ body {
     grid-template-columns: 1fr;
     gap: 1.5rem;
   }
+
+  /* The topbar's fixed-width action buttons don't fit beside the title on
+     phone-width screens -- wrapping them onto their own row keeps the page
+     scrolling vertically only, instead of overflowing horizontally. */
+  .workspace-topbar {
+    flex-wrap: wrap;
+  }
+
+  .workspace-topbar-actions {
+    flex-wrap: wrap;
+  }
 }
 
 /* Compact overview blocks -- deliberately not wrapped in bordered cards for
@@ -1566,69 +1735,6 @@ body {
   font-size: 0.8125rem;
   line-height: 1.5;
   color: var(--muted);
-}
-
-/* Ask CodeMap drawer */
-
-.drawer-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 40;
-}
-
-.drawer-panel {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: min(28rem, 100vw);
-  display: flex;
-  flex-direction: column;
-  background: var(--card);
-  border-left: 1px solid var(--card-border);
-  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.4);
-  z-index: 41;
-  overflow-y: auto;
-}
-
-.drawer-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 1.25rem 1.5rem;
-  border-bottom: 1px solid var(--card-border);
-}
-
-.drawer-header h2 {
-  margin: 0;
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--foreground);
-}
-
-.drawer-close {
-  border: none;
-  background: none;
-  color: var(--muted);
-  cursor: pointer;
-  display: inline-flex;
-  padding: 0.25rem;
-  border-radius: 0.25rem;
-}
-
-.drawer-close:hover {
-  color: var(--foreground);
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.drawer-body {
-  flex: 1;
-  padding: 1.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
 }
 
 .suggested-questions {

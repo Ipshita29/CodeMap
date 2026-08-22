@@ -4,13 +4,7 @@ import { toast } from 'sonner'
 
 import { RepositoryGraph } from '@/components/architecture/RepositoryGraph/RepositoryGraph'
 import { FileInspector } from '@/components/architecture/FileInspector'
-import {
-  analyzeChangeImpact,
-  ApiError,
-  askRepositoryQuestion,
-  fetchCodeIntelligence,
-  fetchRepositoryGraph,
-} from '@/api'
+import { analyzeChangeImpact, ApiError, fetchCodeIntelligence, fetchRepositoryGraph } from '@/api'
 
 function errorMessage(error) {
   return error instanceof ApiError ? error.message : 'Something went wrong. Please try again.'
@@ -112,7 +106,7 @@ function FileTree({ nodes, selectedPath, onSelect }) {
   )
 }
 
-export function ArchitectureWorkspace() {
+export function ArchitectureWorkspace({ onAskAbout }) {
   const [mode, setMode] = useState('architecture')
   const [focus, setFocus] = useState(null)
   const [search, setSearch] = useState('')
@@ -138,7 +132,6 @@ export function ArchitectureWorkspace() {
     enabled: graphQuery.isSuccess,
   })
 
-  const explain = useMutation({ mutationFn: askRepositoryQuestion })
   const impact = useMutation({ mutationFn: analyzeChangeImpact })
 
   function handleModeChange(nextMode) {
@@ -146,16 +139,14 @@ export function ArchitectureWorkspace() {
     if (MODE_PRESETS[nextMode]) setRelationshipFilter(MODE_PRESETS[nextMode].relationshipFilter)
   }
 
-  function handleExplain(path) {
-    explain.mutate(
-      { question: `Explain the purpose and implementation of the file ${path}.`, mode: 'developer' },
-      { onError: (error) => toast.error('Could not explain file', { description: errorMessage(error) }) },
-    )
+  // Routes to the one Ask CodeMap experience on Overview instead of running
+  // its own separate AI call and rendering the answer inline here.
+  function handleAskAboutFile(path) {
+    onAskAbout(`Explain the purpose and implementation of the file ${path}.`)
   }
 
   function selectNode(node) {
     setSelectedNode(node)
-    explain.reset()
   }
 
   function handleAnalyzeImpact() {
@@ -202,7 +193,6 @@ export function ArchitectureWorkspace() {
     if (MODE_PRESETS[mode]) setRelationshipFilter(MODE_PRESETS[mode].relationshipFilter)
     setSelectedNode(null)
     impact.reset()
-    explain.reset()
   }
 
   const rawNodes = graphQuery.data?.nodes ?? []
@@ -391,12 +381,7 @@ export function ArchitectureWorkspace() {
               centerRequest={centerRequest}
             />
 
-            <FileInspector
-              node={selectedNode}
-              intelligence={intelligenceQuery.data}
-              onExplain={handleExplain}
-              explain={explain}
-            />
+            <FileInspector node={selectedNode} intelligence={intelligenceQuery.data} onAskAbout={handleAskAboutFile} />
           </div>
         </>
       )}

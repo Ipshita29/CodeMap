@@ -13,7 +13,7 @@ function healthLabel(score) {
   return 'Critical'
 }
 
-export function HealthDashboard() {
+export function HealthDashboard({ onAskAbout }) {
   const { data, isPending, isError, error } = useQuery({
     queryKey: ['repository-health'],
     queryFn: fetchRepositoryHealth,
@@ -79,6 +79,17 @@ export function HealthDashboard() {
                     </div>
                     <p className="finding-reason">{finding.reason}</p>
                     <p className="finding-recommendation">{finding.recommendation}</p>
+                    <button
+                      type="button"
+                      className="link-button mt-3"
+                      onClick={() =>
+                        onAskAbout(
+                          `Explain this health finding and how to address it: "${finding.reason}"${finding.path ? ` (${finding.path})` : ''}.`,
+                        )
+                      }
+                    >
+                      Ask about this
+                    </button>
                   </li>
                 ))}
               </ul>

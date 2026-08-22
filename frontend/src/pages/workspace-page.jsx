@@ -4,7 +4,6 @@ import { useQuery } from '@tanstack/react-query'
 import { AppShell } from '@/components/layout/AppShell'
 import { Sidebar } from '@/components/layout/Sidebar'
 import { TopBar } from '@/components/layout/TopBar'
-import { AskCodeMap } from '@/components/ai/AskCodeMap'
 import { RepositoryOverview } from '@/components/repository/RepositoryOverview'
 import { ArchitectureWorkspace } from '@/components/architecture/ArchitectureWorkspace'
 import { GitHistory } from '@/components/git/GitHistory'
@@ -13,11 +12,22 @@ import { fetchRepositoryAnalysis } from '@/api'
 
 export function WorkspacePage({ onImportAnother }) {
   const [section, setSection] = useState('overview')
-  const [askOpen, setAskOpen] = useState(false)
+  // { question, key } handed to the Overview's Ask CodeMap panel -- `key`
+  // (not just the question text) is what the panel keys its focus/prefill
+  // effect off of, so asking the same contextual question twice in a row
+  // still re-focuses it. Ask CodeMap has exactly one home now (the Overview
+  // hero card); this is how Architecture/Git/Health reach it without each
+  // duplicating their own "Ask CodeMap" entry point.
+  const [askPrefill, setAskPrefill] = useState(null)
   const { data, isPending, isError, error } = useQuery({
     queryKey: ['repository-analysis'],
     queryFn: fetchRepositoryAnalysis,
   })
+
+  function askAbout(question) {
+    setAskPrefill({ question, key: Date.now() })
+    setSection('overview')
+  }
 
   if (isPending || isError) {
     return (
@@ -49,22 +59,16 @@ export function WorkspacePage({ onImportAnother }) {
   }
 
   return (
-    <>
-      <AppShell
-        sidebar={<Sidebar activeSection={section} onSectionChange={setSection} onAskCodeMap={() => setAskOpen(true)} />}
-        topbar={
-          <TopBar repositoryAnalysis={data} onAskCodeMap={() => setAskOpen(true)} onImportAnother={onImportAnother} />
-        }
-      >
-        {section === 'overview' && (
-          <RepositoryOverview data={data} onExploreStructure={() => setSection('architecture')} />
-        )}
-        {section === 'architecture' && <ArchitectureWorkspace />}
-        {section === 'git' && <GitHistory />}
-        {section === 'health' && <HealthDashboard />}
-      </AppShell>
-
-      {askOpen && <AskCodeMap data={data} onClose={() => setAskOpen(false)} />}
-    </>
+    <AppShell
+      sidebar={<Sidebar activeSection={section} onSectionChange={setSection} repositoryName={data.repository_name} />}
+      topbar={<TopBar repositoryAnalysis={data} onImportAnother={onImportAnother} />}
+    >
+      {section === 'overview' && (
+        <RepositoryOverview data={data} onExploreStructure={() => setSection('architecture')} askPrefill={askPrefill} />
+      )}
+      {section === 'architecture' && <ArchitectureWorkspace onAskAbout={askAbout} />}
+      {section === 'git' && <GitHistory onAskAbout={askAbout} />}
+      {section === 'health' && <HealthDashboard onAskAbout={askAbout} />}
+    </AppShell>
   )
 }

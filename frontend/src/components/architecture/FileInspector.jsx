@@ -88,7 +88,7 @@ function GitHistorySection({ path }) {
   )
 }
 
-export function FileInspector({ node, intelligence, onExplain, explain }) {
+export function FileInspector({ node, intelligence, onAskAbout }) {
   const detailsPath = node?.type === 'file' ? node.data.path : null
   const details = useMemo(() => computeFileDetails(detailsPath, intelligence), [detailsPath, intelligence])
 
@@ -148,20 +148,9 @@ export function FileInspector({ node, intelligence, onExplain, explain }) {
 
       <GitHistorySection key={node.data.path} path={node.data.path} />
 
-      <button
-        type="button"
-        className="btn btn-outline btn-block mt-6"
-        onClick={() => onExplain(node.data.path)}
-        disabled={explain.isPending}
-      >
-        {explain.isPending ? 'Explaining…' : 'Explain this file'}
+      <button type="button" className="btn btn-outline btn-block mt-6" onClick={() => onAskAbout(node.data.path)}>
+        Explain this file
       </button>
-
-      {explain.data && (
-        <div className="details-explanation">
-          <p className="summary-text">{explain.data.answer}</p>
-        </div>
-      )}
     </div>
   )
 }

@@ -15,7 +15,7 @@ function formatDate(iso) {
   }
 }
 
-export function GitHistory() {
+export function GitHistory({ onAskAbout }) {
   const { data, isPending, isError, error } = useQuery({
     queryKey: ['git-summary'],
     queryFn: fetchGitSummary,
@@ -113,7 +113,20 @@ export function GitHistory() {
                   {data.activity.most_modified_files.map((file) => (
                     <li key={file.path} className="hotspot-row">
                       <span className="hotspot-path">{file.path}</span>
-                      <span className="hotspot-count">{file.commit_count} commits</span>
+                      <span className="hotspot-row-actions">
+                        <span className="hotspot-count">{file.commit_count} commits</span>
+                        <button
+                          type="button"
+                          className="link-button"
+                          onClick={() =>
+                            onAskAbout(
+                              `Why has ${file.path} changed so frequently (${file.commit_count} commits), and what should I know about it?`,
+                            )
+                          }
+                        >
+                          Investigate
+                        </button>
+                      </span>
                     </li>
                   ))}
                 </ul>

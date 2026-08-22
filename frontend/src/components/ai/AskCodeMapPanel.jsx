@@ -1,6 +1,5 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { X } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { ApiError, askRepositoryQuestion } from '@/api'
@@ -32,16 +31,26 @@ function SourcesList({ sources }) {
   )
 }
 
-// Shared by the Overview hero section and the sidebar drawer -- one piece
-// of chat logic, two places it's displayed, per "don't duplicate AI logic."
-export function AskCodeMapPanel({ data, autoFocus = false, suggestionsLabel = 'Suggested questions' }) {
+// The single Ask CodeMap experience -- lives inline on Overview. `prefill`
+// (an object `{ question, key }`) is how other pages hand it a
+// context-specific question: bump `key` to force the effect even if the
+// question text repeats, since a plain string wouldn't re-trigger.
+export function AskCodeMapPanel({ data, autoFocus = false, suggestionsLabel = 'Suggested questions', prefill }) {
   const [question, setQuestion] = useState('')
   const [conversation, setConversation] = useState([])
   const chat = useMutation({ mutationFn: askRepositoryQuestion })
   const queryClient = useQueryClient()
+  const inputRef = useRef(null)
 
   const codeIntelligence = queryClient.getQueryData(['code-intelligence'])
   const suggestions = buildSuggestedQuestions(data, codeIntelligence)
+
+  useEffect(() => {
+    if (!prefill) return
+    setQuestion(prefill.question)
+    inputRef.current?.focus()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefill?.key])
 
   function handleAsk(event) {
     event.preventDefault()
@@ -64,6 +73,7 @@ export function AskCodeMapPanel({ data, autoFocus = false, suggestionsLabel = 'S
     <>
       <form onSubmit={handleAsk} className="ask-codemap-form">
         <input
+          ref={inputRef}
           className="input ask-codemap-input"
           type="text"
           placeholder="Ask anything about this codebase…"
@@ -101,29 +111,6 @@ export function AskCodeMapPanel({ data, autoFocus = false, suggestionsLabel = 'S
           ))}
         </div>
       )}
-    </>
-  )
-}
-
-// The sidebar/topbar entry point into Ask CodeMap -- drawer chrome around
-// the same panel used inline on Overview.
-export function AskCodeMap({ data, onClose }) {
-  return (
-    <>
-      <div className="drawer-overlay" onClick={onClose} />
-      <aside className="drawer-panel">
-        <div className="drawer-header">
-          <h2>Ask CodeMap</h2>
-          <button type="button" className="drawer-close" onClick={onClose} aria-label="Close">
-            <X size={18} />
-          </button>
-        </div>
-
-        <div className="drawer-body">
-          <p className="card-subtitle">Ask anything about this repository.</p>
-          <AskCodeMapPanel data={data} autoFocus />
-        </div>
-      </aside>
     </>
   )
 }

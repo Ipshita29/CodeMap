@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Code2, Loader2, Sparkles } from 'lucide-react'
 
 import { ApiError, fetchGitSummary, generateRepositorySummary } from '@/api'
-import { AskCodeMapPanel } from '@/components/ai/AskCodeMap'
+import { AskCodeMapPanel } from '@/components/ai/AskCodeMapPanel'
 import { getFrameworkIcon, getLanguageIcon } from '@/lib/tech-icons'
 import {
   buildInsights,
@@ -73,8 +73,19 @@ function SummaryLoadingState() {
   )
 }
 
-export function RepositoryOverview({ data, onExploreStructure }) {
+export function RepositoryOverview({ data, onExploreStructure, askPrefill }) {
   const [summaryMode, setSummaryMode] = useState('beginner')
+  const askSectionRef = useRef(null)
+
+  // Other pages hand this a { question, key } via onAskAbout -- scrolling
+  // the hero into view is this component's job (it owns the page layout);
+  // AskCodeMapPanel owns filling in and focusing the input itself.
+  useEffect(() => {
+    if (!askPrefill) return
+    const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    askSectionRef.current?.scrollIntoView({ behavior: reduceMotion ? 'auto' : 'smooth', block: 'start' })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [askPrefill?.key])
 
   // enabled: false -- this only ever runs when the user explicitly clicks
   // "Generate Summary" and calls refetch(). No AI call happens just from
@@ -102,7 +113,7 @@ export function RepositoryOverview({ data, onExploreStructure }) {
         <p className="card-subtitle">Repository analysis</p>
       </section>
 
-      <section className="ask-codemap-hero">
+      <section className="ask-codemap-hero" ref={askSectionRef}>
         <div className="ask-codemap-hero-header">
           <Sparkles size={18} />
           <h2>Ask CodeMap</h2>
@@ -111,7 +122,7 @@ export function RepositoryOverview({ data, onExploreStructure }) {
           Your repository, explained. Ask questions about architecture, files, dependencies, implementation and
           behavior — grounded in what CodeMap actually found in this codebase.
         </p>
-        <AskCodeMapPanel data={data} suggestionsLabel="Try asking" />
+        <AskCodeMapPanel data={data} suggestionsLabel="Try asking" prefill={askPrefill} />
       </section>
 
       <div className="metrics-row">
