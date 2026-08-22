@@ -1,0 +1,55 @@
+/* Analyzing page (progress checklist while the day-2 scan runs) */
+
+.card-center {
+  text-align: center;
+}
+
+.analysis-progress {
+  max-width: 26rem;
+}
+
+.progress-stage-list {
+  margin: 1.5rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  text-align: left;
+}
+
+.progress-stage {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.progress-stage-done {
+  color: var(--foreground);
+}
+
+.progress-stage-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.125rem;
+  height: 1.125rem;
+  flex-shrink: 0;
+}
+
+.progress-bar-track {
+  margin-top: 1.25rem;
+  height: 0.25rem;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  border-radius: 9999px;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}

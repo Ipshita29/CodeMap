@@ -1,18 +1,126 @@
 import { useEffect, useRef, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { Code2, Loader2, Sparkles } from 'lucide-react'
-
-import { ApiError, fetchGitSummary, generateRepositorySummary } from '@/api'
-import { AskCodeMapPanel } from '@/components/ai/AskCodeMapPanel'
-import { getFrameworkIcon, getLanguageIcon } from '@/lib/tech-icons'
+import { toast } from 'sonner'
 import {
-  buildInsights,
-  computeLanguageBreakdown,
-  computeTopFolders,
-} from '@/lib/repository-intelligence'
+  SiAngular,
+  SiApachemaven,
+  SiAxios,
+  SiC,
+  SiComposer,
+  SiCplusplus,
+  SiCss,
+  SiDart,
+  SiDjango,
+  SiExpress,
+  SiFastapi,
+  SiFlask,
+  SiFlutter,
+  SiGit,
+  SiGnubash,
+  SiGo,
+  SiHtml5,
+  SiJavascript,
+  SiJson,
+  SiKotlin,
+  SiLess,
+  SiMarkdown,
+  SiMongoose,
+  SiNestjs,
+  SiNextdotjs,
+  SiNumpy,
+  SiPandas,
+  SiPhp,
+  SiPydantic,
+  SiPython,
+  SiReact,
+  SiReactquery,
+  SiRuby,
+  SiRust,
+  SiSass,
+  SiSocketdotio,
+  SiSqlalchemy,
+  SiSvelte,
+  SiSwift,
+  SiTailwindcss,
+  SiTypescript,
+  SiVite,
+  SiVuedotjs,
+  SiYaml,
+} from 'react-icons/si'
+
+import { ApiError, askRepositoryQuestion, fetchGitSummary, generateRepositorySummary } from '@/api'
+import { buildInsights, buildSuggestedQuestions, computeLanguageBreakdown, computeTopFolders } from '@/repository-intelligence'
+import '../css/overview.css'
 
 function errorMessage(error) {
   return error instanceof ApiError ? error.message : 'Something went wrong. Please try again.'
+}
+
+// Maps the exact language/framework names the backend returns (see
+// backend/app/analyzer/constants.py LANGUAGE_EXTENSIONS and
+// app/analyzer/tech_stack_detector.py) to a real Simple Icons brand icon.
+// Every key here was verified to exist in the installed react-icons/si
+// package before being added -- an unmapped name just falls back to a
+// generic icon rather than crashing on an undefined component.
+const LANGUAGE_ICONS = {
+  Python: SiPython,
+  JavaScript: SiJavascript,
+  TypeScript: SiTypescript,
+  HTML: SiHtml5,
+  CSS: SiCss,
+  SCSS: SiSass,
+  Sass: SiSass,
+  Less: SiLess,
+  JSON: SiJson,
+  Markdown: SiMarkdown,
+  YAML: SiYaml,
+  Shell: SiGnubash,
+  Go: SiGo,
+  Rust: SiRust,
+  Ruby: SiRuby,
+  PHP: SiPhp,
+  Kotlin: SiKotlin,
+  Swift: SiSwift,
+  C: SiC,
+  'C++': SiCplusplus,
+  Dart: SiDart,
+  Vue: SiVuedotjs,
+  Svelte: SiSvelte,
+}
+
+const FRAMEWORK_ICONS = {
+  React: SiReact,
+  'Next.js': SiNextdotjs,
+  Express: SiExpress,
+  Vite: SiVite,
+  'Socket.IO': SiSocketdotio,
+  Axios: SiAxios,
+  Mongoose: SiMongoose,
+  'Vue.js': SiVuedotjs,
+  Angular: SiAngular,
+  NestJS: SiNestjs,
+  'Tailwind CSS': SiTailwindcss,
+  'React Query': SiReactquery,
+  FastAPI: SiFastapi,
+  Flask: SiFlask,
+  Django: SiDjango,
+  NumPy: SiNumpy,
+  Pandas: SiPandas,
+  SQLAlchemy: SiSqlalchemy,
+  Pydantic: SiPydantic,
+  GitPython: SiGit,
+  'PHP (Composer)': SiComposer,
+  'Java (Maven)': SiApachemaven,
+  'Dart/Flutter': SiFlutter,
+}
+
+function getLanguageIcon(name) {
+  return LANGUAGE_ICONS[name] ?? null
+}
+
+function getFrameworkIcon(name) {
+  return FRAMEWORK_ICONS[name] ?? null
 }
 
 const FRAMEWORK_CATEGORY = {
@@ -70,6 +178,112 @@ function SummaryLoadingState() {
       <Loader2 className="spinner" size={16} />
       <span>{SUMMARY_LOADING_PHRASES[phraseIndex]}</span>
     </div>
+  )
+}
+
+function SourcesList({ sources }) {
+  if (sources.length === 0) return null
+  return (
+    <div className="sources">
+      <p className="sources-title">Sources</p>
+      <ul className="sources-list">
+        {sources.map((source) => (
+          <li key={source}>
+            <button
+              type="button"
+              className="source-link"
+              onClick={() => toast('File viewer is coming in a future update', { description: source })}
+            >
+              {source}
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+// The single Ask CodeMap experience -- lives inline on Overview. `prefill`
+// (an object `{ question, key }`) is how other pages hand it a
+// context-specific question: bump `key` to force the effect even if the
+// question text repeats, since a plain string wouldn't re-trigger.
+function AskCodeMapPanel({ data, autoFocus = false, suggestionsLabel = 'Suggested questions', prefill }) {
+  const [question, setQuestion] = useState('')
+  const [conversation, setConversation] = useState([])
+  const chat = useMutation({ mutationFn: askRepositoryQuestion })
+  const queryClient = useQueryClient()
+  const inputRef = useRef(null)
+
+  const codeIntelligence = queryClient.getQueryData(['code-intelligence'])
+  const suggestions = buildSuggestedQuestions(data, codeIntelligence)
+
+  useEffect(() => {
+    if (!prefill) return
+    setQuestion(prefill.question)
+    inputRef.current?.focus()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefill?.key])
+
+  function handleAsk(event) {
+    event.preventDefault()
+    const trimmed = question.trim()
+    if (!trimmed || chat.isPending) return
+
+    chat.mutate(
+      { question: trimmed, mode: 'developer' },
+      {
+        onSuccess: (result) => {
+          setConversation((prev) => [{ question: trimmed, ...result }, ...prev])
+          setQuestion('')
+        },
+        onError: (error) => toast.error('Could not get an answer', { description: errorMessage(error) }),
+      },
+    )
+  }
+
+  return (
+    <>
+      <form onSubmit={handleAsk} className="ask-codemap-form">
+        <input
+          ref={inputRef}
+          className="input ask-codemap-input"
+          type="text"
+          placeholder="Ask anything about this codebase…"
+          value={question}
+          disabled={chat.isPending}
+          onChange={(event) => setQuestion(event.target.value)}
+          autoFocus={autoFocus}
+        />
+        <button type="submit" className="btn btn-primary" disabled={chat.isPending || !question.trim()}>
+          {chat.isPending ? 'Thinking…' : 'Ask'}
+        </button>
+      </form>
+
+      {conversation.length === 0 && (
+        <div className="suggested-questions">
+          <p className="sources-title">{suggestionsLabel}</p>
+          <div className="suggested-question-grid">
+            {suggestions.map((suggested) => (
+              <button key={suggested} type="button" className="suggested-question" onClick={() => setQuestion(suggested)}>
+                {suggested}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {conversation.length > 0 && (
+        <div className="conversation-list">
+          {conversation.map((entry, index) => (
+            <div className="conversation-entry" key={`${entry.question}-${index}`}>
+              <p className="conversation-question">{entry.question}</p>
+              <p className="conversation-answer">{entry.answer}</p>
+              <SourcesList sources={entry.sources} />
+            </div>
+          ))}
+        </div>
+      )}
+    </>
   )
 }
 

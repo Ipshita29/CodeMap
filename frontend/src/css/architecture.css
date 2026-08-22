@@ -1,0 +1,253 @@
+/* Architecture / graph view */
+
+.architecture-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.architecture-search {
+  flex: 1;
+  min-width: 12rem;
+  max-width: 20rem;
+}
+
+.filter-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  flex-wrap: wrap;
+}
+
+.filter-group-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-right: 0.25rem;
+}
+
+.filter-chip {
+  border: 1px solid var(--card-border);
+  background: transparent;
+  color: var(--muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 0.3rem 0.7rem;
+  border-radius: 9999px;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.filter-chip:hover {
+  color: var(--foreground);
+  border-color: var(--accent);
+}
+
+.filter-chip-active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+.architecture-banner {
+  border-radius: 0.5rem;
+  border: 1px solid var(--card-border);
+  background: rgba(110, 123, 242, 0.08);
+  padding: 0.75rem 1rem;
+  font-size: 0.8125rem;
+  color: var(--foreground);
+}
+
+.architecture-layout {
+  display: grid;
+  grid-template-columns: 13rem minmax(0, 1fr) 18rem;
+  gap: 1rem;
+  height: 36rem;
+}
+
+.architecture-sidebar {
+  overflow-y: auto;
+  border-radius: 0.75rem;
+  border: 1px solid var(--card-border);
+  background: var(--card);
+  padding: 1rem;
+}
+
+.architecture-sidebar-title {
+  margin: 0 0 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.file-tree,
+.file-tree ul {
+  list-style: none;
+  margin: 0;
+  padding-left: 0.9rem;
+}
+
+.file-tree {
+  padding-left: 0;
+}
+
+.file-tree li {
+  margin: 0.125rem 0;
+}
+
+.file-tree-folder {
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
+.file-tree-item {
+  border: none;
+  background: none;
+  padding: 0;
+  font-size: 0.8125rem;
+  color: var(--foreground);
+  cursor: pointer;
+  text-align: left;
+}
+
+.file-tree-item:hover {
+  color: var(--accent);
+}
+
+.file-tree-item-active {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.button-row {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.inspector-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.inspector-list li {
+  font-size: 0.8125rem;
+  color: var(--foreground);
+  font-family: var(--font-mono);
+}
+
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  border-radius: 9999px;
+  border: 1px solid var(--card-border);
+  padding: 0.25rem 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--foreground);
+}
+
+/* Impact analysis report */
+
+.impact-report-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.risk-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+}
+
+.risk-low {
+  background: rgba(52, 211, 153, 0.12);
+  color: var(--success);
+}
+
+.risk-medium {
+  background: rgba(240, 180, 41, 0.14);
+  color: var(--warning);
+}
+
+.risk-high,
+.risk-critical {
+  background: rgba(242, 85, 90, 0.14);
+  color: var(--destructive);
+}
+
+@media (max-width: 60rem) {
+  .architecture-layout {
+    grid-template-columns: 1fr;
+    height: auto;
+  }
+
+  .architecture-sidebar,
+  .repository-graph,
+  .file-details-panel {
+    height: 20rem;
+  }
+}
+
+/* File inspector (side panel for the selected node) */
+
+.file-details-panel {
+  height: 100%;
+  overflow-y: auto;
+  border-radius: 0.75rem;
+  border: 1px solid var(--card-border);
+  background: var(--card);
+  padding: 1.5rem;
+}
+
+.details-path {
+  margin: 0.25rem 0 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.details-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.details-hint {
+  margin-top: 0.75rem;
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
+.details-section {
+  margin-top: 1.25rem;
+}
+
+.details-section-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}

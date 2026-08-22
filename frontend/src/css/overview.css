@@ -1,0 +1,290 @@
+/* Compact overview blocks -- deliberately not wrapped in bordered cards for
+   every single piece of information; sections are separated by whitespace
+   and a thin top border, not another nested box. */
+
+.overview {
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
+
+.overview-identity h1 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--foreground);
+}
+
+.structure-summary-list {
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.structure-summary-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.875rem;
+}
+
+.structure-summary-name {
+  font-family: var(--font-mono);
+  color: var(--foreground);
+}
+
+.structure-summary-count {
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.insight-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.insight-item {
+  display: flex;
+  gap: 1rem;
+}
+
+.insight-index {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--accent);
+  padding-top: 0.125rem;
+}
+
+.insight-title {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.insight-body {
+  margin: 0.25rem 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.suggested-questions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.suggested-question {
+  border: 1px solid var(--card-border);
+  background: none;
+  border-radius: 0.5rem;
+  padding: 0.625rem 0.875rem;
+  font-size: 0.8125rem;
+  color: var(--foreground);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, background-color 0.15s;
+}
+
+.suggested-question:hover {
+  border-color: var(--accent);
+  background: rgba(110, 123, 242, 0.06);
+}
+
+.suggested-question-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 0.5rem;
+}
+
+/* Ask CodeMap hero -- the primary, first-noticed section of Overview. Not a
+   bordered form-in-a-box: a subtle accent wash marks it as the product's
+   core interaction rather than a generic chat widget. */
+
+.ask-codemap-hero {
+  padding: 1.75rem;
+  border-radius: 1rem;
+  border: 1px solid var(--card-border);
+  background: radial-gradient(120% 140% at 0% 0%, rgba(110, 123, 242, 0.14), transparent 55%), var(--card);
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.ask-codemap-hero-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--accent);
+}
+
+.ask-codemap-hero-header h2 {
+  margin: 0;
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.ask-codemap-tagline {
+  margin: 0;
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: var(--muted);
+  max-width: 42rem;
+}
+
+.ask-codemap-form {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.ask-codemap-input {
+  flex: 1;
+  height: 3rem;
+}
+
+.sources {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--card-border);
+}
+
+.sources-title {
+  margin: 0 0 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.sources-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.source-link {
+  border: none;
+  background: none;
+  padding: 0;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  color: var(--accent);
+  cursor: pointer;
+  text-align: left;
+}
+
+.source-link:hover {
+  color: var(--accent-hover);
+  text-decoration: underline;
+}
+
+.conversation-list {
+  margin-top: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.conversation-entry {
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--card-border);
+}
+
+.conversation-question {
+  margin: 0 0 0.5rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.conversation-answer {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--foreground);
+  white-space: pre-wrap;
+}
+
+/* Tech stack */
+
+.tech-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.tech-category-label {
+  margin: 0 0 0.625rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+
+.tech-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+  gap: 0.625rem;
+}
+
+.tech-chip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.625rem;
+  border: 1px solid var(--card-border);
+  border-radius: 0.5rem;
+  padding: 0.625rem 0.75rem;
+  background: var(--background);
+}
+
+.tech-chip-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--foreground);
+}
+
+.tech-chip-name {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--foreground);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tech-chip-meta {
+  width: 100%;
+  font-size: 0.6875rem;
+  color: var(--muted);
+}
+
+/* On-demand AI summary -- deliberately the least prominent section on the
+   page; nothing here renders until the user clicks Generate Summary. */
+
+.summary-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  margin-top: 0.75rem;
+  font-size: 0.875rem;
+  color: var(--muted);
+}

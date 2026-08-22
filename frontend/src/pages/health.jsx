@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 
 import { ApiError, fetchRepositoryHealth } from '@/api'
+import '../css/health.css'
 
 function errorMessage(error) {
   return error instanceof ApiError ? error.message : 'Something went wrong. Please try again.'

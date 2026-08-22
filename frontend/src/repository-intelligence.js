@@ -1,7 +1,7 @@
 // Pure functions deriving Overview-page intelligence from data already on
 // the page (the day-2 repository analysis, plus whatever's already been
 // cached by visiting other sections). Nothing here makes a network call --
-// see components/RepositoryOverview.jsx for how these are wired up.
+// see pages/overview.jsx for how these are wired up.
 
 const NON_SOURCE_BASENAMES = new Set([
   'package-lock.json',

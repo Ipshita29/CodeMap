@@ -2,9 +2,9 @@ import { useState } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster as Sonner } from 'sonner'
 
-import { LandingPage } from '@/pages/landing-page'
-import { AnalyzingPage } from '@/pages/analyzing-page'
-import { WorkspacePage } from '@/pages/workspace-page'
+import { LandingPage } from '@/pages/landing'
+import { AnalyzingPage } from '@/pages/analyzing'
+import { WorkspacePage } from '@/pages/workspace'
 
 const queryClient = new QueryClient()
 

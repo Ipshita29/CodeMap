@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 
 import { ApiError, fetchGitSummary } from '@/api'
+import '../css/githistory.css'
 
 function errorMessage(error) {
   return error instanceof ApiError ? error.message : 'Something went wrong. Please try again.'

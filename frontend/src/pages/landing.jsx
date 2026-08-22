@@ -4,6 +4,7 @@ import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { ApiError, importRepository, isValidGitHubUrl } from '@/api'
+import '../css/landing.css'
 
 const CAPABILITIES = [
   { title: 'Architecture', body: 'Understand how the codebase is structured.' },
