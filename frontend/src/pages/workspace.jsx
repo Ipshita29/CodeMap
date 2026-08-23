@@ -15,10 +15,6 @@ function errorMessage(error) {
   return error instanceof ApiError ? error.message : 'Something went wrong. Please try again.'
 }
 
-// Repository destinations only -- Ask CodeMap isn't one of these anymore.
-// It lives exclusively as the hero card on Overview (see pages/overview.jsx);
-// Architecture/Git/Health reach it via small contextual actions rather than
-// a sidebar entry of its own.
 const NAV_TILES = [
   { id: 'overview', label: 'Overview', icon: LayoutGrid, accent: 'teal' },
   { id: 'architecture', label: 'Architecture', icon: Network, accent: 'blue' },
@@ -75,11 +71,6 @@ function Sidebar({ activeSection, onSectionChange, repositoryName }) {
     </aside>
   )
 }
-
-// Deliberately reads the query cache passively instead of fetching --
-// export should only ever include what's already been analyzed in this
-// session (visiting Architecture/Git/Health), never trigger new background
-// work just because the menu was opened.
 function ExportMenu({ repositoryAnalysis }) {
   const [open, setOpen] = useState(false)
   const containerRef = useRef(null)
@@ -119,7 +110,7 @@ function ExportMenu({ repositoryAnalysis }) {
     try {
       graph = await fetchRepositoryGraph({})
     } catch {
-      graph = null // JSON export still works without the graph -- it's supplementary
+      graph = null 
     }
     const json = buildJsonExport({ ...collectData(), graph })
     downloadTextFile(`codemap-${repositoryAnalysis.repository_name}.json`, JSON.stringify(json, null, 2), 'application/json')
@@ -197,12 +188,6 @@ function TopBar({ repositoryAnalysis, onImportAnother }) {
 
 export function WorkspacePage({ onImportAnother }) {
   const [section, setSection] = useState('overview')
-  // { question, key } handed to the Overview's Ask CodeMap panel -- `key`
-  // (not just the question text) is what the panel keys its focus/prefill
-  // effect off of, so asking the same contextual question twice in a row
-  // still re-focuses it. Ask CodeMap has exactly one home now (the Overview
-  // hero card); this is how Architecture/Git/Health reach it without each
-  // duplicating their own "Ask CodeMap" entry point.
   const [askPrefill, setAskPrefill] = useState(null)
   const { data, isPending, isError, error } = useQuery({
     queryKey: ['repository-analysis'],

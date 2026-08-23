@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Code2, Folder, FolderTree, Layers, Loader2, Sparkles } from 'lucide-react'
+import { ArrowRight, ChevronUp, Code2, Folder, FolderTree, Layers, Loader2, Sparkles, X } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   SiAngular,
@@ -50,7 +50,7 @@ import {
 } from 'react-icons/si'
 
 import { ApiError, askRepositoryQuestion, fetchGitSummary, generateRepositorySummary } from '@/api'
-import { buildInsights, buildSuggestedQuestions, computeLanguageBreakdown, computeTopFolders } from '@/repository-intelligence'
+import { buildSuggestedQuestions, computeLanguageBreakdown, computeTopFolders } from '@/repository-intelligence'
 import '../css/overview.css'
 
 function errorMessage(error) {
@@ -265,26 +265,42 @@ function SourcesList({ sources }) {
   )
 }
 
-// The single Ask CodeMap experience -- lives inline on Overview. `prefill`
-// (an object `{ question, key }`) is how other pages hand it a
+// The single Ask CodeMap experience -- a compact command bar on Overview
+// that expands inline on focus/Cmd+K rather than a permanently-open card.
+// `prefill` (an object `{ question, key }`) is how other pages hand it a
 // context-specific question: bump `key` to force the effect even if the
 // question text repeats, since a plain string wouldn't re-trigger.
-function AskCodeMapPanel({ data, autoFocus = false, suggestionsLabel = 'Suggested questions', prefill }) {
+function AskCodeMapPanel({ data, prefill, sectionRef }) {
   const [question, setQuestion] = useState('')
   const [conversation, setConversation] = useState([])
+  const [expanded, setExpanded] = useState(false)
   const chat = useMutation({ mutationFn: askRepositoryQuestion })
   const queryClient = useQueryClient()
   const inputRef = useRef(null)
 
   const codeIntelligence = queryClient.getQueryData(['code-intelligence'])
-  const suggestions = buildSuggestedQuestions(data, codeIntelligence)
+  const suggestions = buildSuggestedQuestions(data, codeIntelligence).slice(0, 5)
 
   useEffect(() => {
     if (!prefill) return
     setQuestion(prefill.question)
+    setExpanded(true)
     inputRef.current?.focus()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prefill?.key])
+
+  // Cmd/Ctrl+K opens and focuses the bar from anywhere on Overview -- a
+  // standard command-palette shortcut, scoped to this one mounted instance.
+  useEffect(() => {
+    function handleKeydown(event) {
+      if (event.key.toLowerCase() !== 'k' || !(event.metaKey || event.ctrlKey)) return
+      event.preventDefault()
+      setExpanded(true)
+      inputRef.current?.focus()
+    }
+    window.addEventListener('keydown', handleKeydown)
+    return () => window.removeEventListener('keydown', handleKeydown)
+  }, [])
 
   function handleAsk(event) {
     event.preventDefault()
@@ -297,44 +313,89 @@ function AskCodeMapPanel({ data, autoFocus = false, suggestionsLabel = 'Suggeste
         onSuccess: (result) => {
           setConversation((prev) => [{ question: trimmed, ...result }, ...prev])
           setQuestion('')
+          setExpanded(true)
         },
         onError: (error) => toast.error('Could not get an answer', { description: errorMessage(error) }),
       },
     )
   }
 
+  function pickSuggestion(suggested) {
+    setQuestion(suggested)
+    setExpanded(true)
+    inputRef.current?.focus()
+  }
+
+  // Losing focus only collapses the bar back down when there's nothing to
+  // preserve -- an in-progress question or an existing answer stays open;
+  // the chevron in the header is the explicit way to close those.
+  function handleBlur(event) {
+    if (event.currentTarget.contains(event.relatedTarget)) return
+    if (question.trim() === '' && conversation.length === 0 && !chat.isPending) setExpanded(false)
+  }
+
+  function handleKeyDown(event) {
+    if (event.key === 'Escape') {
+      event.currentTarget.blur()
+      setExpanded(false)
+    }
+  }
+
   return (
-    <>
-      <form onSubmit={handleAsk} className="ask-codemap-form">
+    <section
+      className={`ask-command-bar${expanded ? ' ask-command-bar-expanded' : ''}`}
+      ref={sectionRef}
+      onBlur={handleBlur}
+      onKeyDown={handleKeyDown}
+    >
+      <div className="ask-command-header">
+        <span className="ask-command-title">
+          <Sparkles size={15} />
+          Ask CodeMap
+        </span>
+        {expanded ? (
+          <button type="button" className="ask-command-collapse" onClick={() => setExpanded(false)} aria-label="Collapse">
+            <ChevronUp size={15} />
+          </button>
+        ) : (
+          <span className="ask-command-kbd">⌘K</span>
+        )}
+      </div>
+
+      <form onSubmit={handleAsk} className="ask-command-form">
         <input
           ref={inputRef}
-          className="input ask-codemap-input"
+          className="ask-command-input"
           type="text"
           placeholder="Ask anything about this codebase…"
           value={question}
           disabled={chat.isPending}
           onChange={(event) => setQuestion(event.target.value)}
-          autoFocus={autoFocus}
+          onFocus={() => setExpanded(true)}
         />
-        <button type="submit" className="btn btn-primary" disabled={chat.isPending || !question.trim()}>
-          {chat.isPending ? 'Thinking…' : 'Ask'}
+        <button type="submit" className="ask-command-submit" disabled={chat.isPending || !question.trim()} aria-label="Ask">
+          {chat.isPending ? <Loader2 className="spinner" size={15} /> : <ArrowRight size={15} />}
         </button>
       </form>
 
-      {conversation.length === 0 && (
-        <div className="suggested-questions">
-          <p className="sources-title">{suggestionsLabel}</p>
-          <div className="suggested-question-grid">
-            {suggestions.map((suggested) => (
-              <button key={suggested} type="button" className="suggested-question" onClick={() => setQuestion(suggested)}>
+      {suggestions.length > 0 && (
+        <div className="ask-command-suggestions">
+          {suggestions.map((suggested, index) => (
+            <span key={suggested} className="ask-command-suggestion-wrap">
+              <button type="button" className="ask-command-suggestion" onClick={() => pickSuggestion(suggested)}>
                 {suggested}
               </button>
-            ))}
-          </div>
+              {index < suggestions.length - 1 && (
+                <span className="ask-command-dot" aria-hidden="true">
+                  ·
+                </span>
+              )}
+            </span>
+          ))}
         </div>
       )}
 
-      {conversation.length > 0 && (
+      {expanded && conversation.length > 0 && (
         <div className="conversation-list">
           {conversation.map((entry, index) => (
             <div className="conversation-entry" key={`${entry.question}-${index}`}>
@@ -345,20 +406,20 @@ function AskCodeMapPanel({ data, autoFocus = false, suggestionsLabel = 'Suggeste
           ))}
         </div>
       )}
-    </>
+    </section>
   )
 }
 
 // Hover-driven flex-grow per card, keyed by which card currently has focus.
-// Repository structure is the default focus (center, slightly larger) --
-// hovering (or tab-focusing) a card reassigns focus to it; leaving the
-// carousel entirely falls back to 'structure'. Values stay close together
-// on purpose (0.85-1.3) so the three cards always read as one composition
-// rather than one card ballooning over the other two.
+// Card order is ai, tech, structure -- tech is the default focus (center,
+// slightly larger) -- hovering (or tab-focusing) a card reassigns focus to
+// it; leaving the carousel entirely falls back to 'tech'. Values stay close
+// together on purpose (0.85-1.3) so the three cards always read as one
+// composition rather than one card ballooning over the other two.
 const FOCUS_GROW = {
-  tech: { tech: 1.3, structure: 0.9, ai: 0.85 },
-  structure: { tech: 0.88, structure: 1.28, ai: 0.88 },
-  ai: { tech: 0.85, structure: 0.9, ai: 1.3 },
+  ai: { ai: 1.3, tech: 0.9, structure: 0.85 },
+  tech: { ai: 0.88, tech: 1.28, structure: 0.88 },
+  structure: { ai: 0.85, tech: 0.9, structure: 1.3 },
 }
 
 function IntelligenceCard({ id, focused, onFocus, headerIcon: HeaderIcon, title, children, footer }) {
@@ -380,9 +441,84 @@ function IntelligenceCard({ id, focused, onFocus, headerIcon: HeaderIcon, title,
   )
 }
 
+// The AI Repository Brief carousel card is just an entry point -- the
+// generated summary itself renders here, in a right-side drawer, so the
+// carousel stays a compact scanning surface regardless of how long the
+// generated text is. Reuses the exact same `summary` query/mutstate the
+// card's button triggers; nothing here re-requests or duplicates it.
+function RepositoryBriefDrawer({ open, onClose, repositoryName, summary, summaryMode, onSummaryModeChange }) {
+  useEffect(() => {
+    if (!open) return
+    function handleKeydown(event) {
+      if (event.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', handleKeydown)
+    return () => window.removeEventListener('keydown', handleKeydown)
+  }, [open, onClose])
+
+  return (
+    <>
+      <div className={`brief-drawer-backdrop${open ? ' brief-drawer-backdrop-open' : ''}`} onClick={onClose} aria-hidden="true" />
+      <aside className={`brief-drawer${open ? ' brief-drawer-open' : ''}`} aria-hidden={!open}>
+        <div className="brief-drawer-header">
+          <div>
+            <p className="brief-drawer-eyebrow">
+              <Sparkles size={14} />
+              AI Repository Brief
+            </p>
+            <h3 className="brief-drawer-title">{repositoryName}</h3>
+            <p className="card-subtitle">Repository analysis</p>
+          </div>
+          <button type="button" className="brief-drawer-close" onClick={onClose}>
+            <X size={15} />
+            Close
+          </button>
+        </div>
+
+        {summary.data && !summary.isFetching && (
+          <div className="brief-drawer-toolbar">
+            <div className="mode-toggle">
+              <button
+                type="button"
+                className={summaryMode === 'beginner' ? 'mode-btn mode-btn-active' : 'mode-btn'}
+                onClick={() => onSummaryModeChange('beginner')}
+              >
+                Beginner
+              </button>
+              <button
+                type="button"
+                className={summaryMode === 'developer' ? 'mode-btn mode-btn-active' : 'mode-btn'}
+                onClick={() => onSummaryModeChange('developer')}
+              >
+                Developer
+              </button>
+            </div>
+            <button type="button" className="link-button" onClick={() => summary.refetch()}>
+              Regenerate
+            </button>
+          </div>
+        )}
+
+        <div className="brief-drawer-body">
+          {summary.isFetching && <SummaryLoadingState />}
+          {summary.isError && !summary.isFetching && (
+            <p className="field-error">Could not generate a summary: {errorMessage(summary.error)}</p>
+          )}
+          {summary.data && !summary.isFetching && (
+            <p className="summary-text">
+              {summaryMode === 'beginner' ? summary.data.beginner_summary : summary.data.developer_summary}
+            </p>
+          )}
+        </div>
+      </aside>
+    </>
+  )
+}
+
 export function RepositoryOverview({ data, onExploreStructure, askPrefill }) {
   const [summaryMode, setSummaryMode] = useState('beginner')
-  const [focusedCard, setFocusedCard] = useState('structure')
+  const [focusedCard, setFocusedCard] = useState('tech')
+  const [briefOpen, setBriefOpen] = useState(false)
   const askSectionRef = useRef(null)
 
   // Other pages hand this a { question, key } via onAskAbout -- scrolling
@@ -407,11 +543,18 @@ export function RepositoryOverview({ data, onExploreStructure, askPrefill }) {
   })
   const gitSummary = useQuery({ queryKey: ['git-summary'], queryFn: fetchGitSummary, retry: false })
 
+  // Opens the drawer and, the first time, kicks off the same on-demand
+  // generation the old inline "Generate Summary" button used -- once
+  // summary.data exists, reopening just shows it again, no re-fetch.
+  function openBrief() {
+    setBriefOpen(true)
+    if (!summary.data && !summary.isFetching) summary.refetch()
+  }
+
   const { total_files, total_folders, frameworks, statistics } = data
   const topFolders = computeTopFolders(data.files)
   const languageBreakdown = computeLanguageBreakdown(data.files)
   const frameworkGroups = mergeFrameworkGroups(groupFrameworksByCategory(frameworks))
-  const insights = buildInsights(data, gitSummary.data, null)
   const contributors = gitSummary.data?.has_git_history ? gitSummary.data.activity.contributors : null
 
   return (
@@ -421,17 +564,7 @@ export function RepositoryOverview({ data, onExploreStructure, askPrefill }) {
         <p className="card-subtitle">Repository analysis</p>
       </section>
 
-      <section className="ask-codemap-hero" ref={askSectionRef}>
-        <div className="ask-codemap-hero-header">
-          <Sparkles size={18} />
-          <h2>Ask CodeMap</h2>
-        </div>
-        <p className="ask-codemap-tagline">
-          Your repository, explained. Ask questions about architecture, files, dependencies, implementation and
-          behavior — grounded in what CodeMap actually found in this codebase.
-        </p>
-        <AskCodeMapPanel data={data} suggestionsLabel="Try asking" prefill={askPrefill} />
-      </section>
+      <AskCodeMapPanel data={data} prefill={askPrefill} sectionRef={askSectionRef} />
 
       <div className="metrics-row">
         <span>
@@ -452,7 +585,19 @@ export function RepositoryOverview({ data, onExploreStructure, askPrefill }) {
 
       <section className="overview-block intelligence-block">
         <p className="intel-eyebrow">Repository intelligence</p>
-        <div className="intelligence-carousel" onMouseLeave={() => setFocusedCard('structure')}>
+        <div className="intelligence-carousel" onMouseLeave={() => setFocusedCard('tech')}>
+          <IntelligenceCard id="ai" focused={focusedCard} onFocus={setFocusedCard} headerIcon={Sparkles} title="AI repository brief">
+            <div className="intel-ai-empty">
+              <p className="card-subtitle">Understand this repository in plain language.</p>
+              <button type="button" className="btn btn-outline mt-3" onClick={openBrief} disabled={summary.isFetching}>
+                {summary.isFetching ? 'Generating…' : summary.data ? 'View AI brief →' : 'Generate AI brief →'}
+              </button>
+              {summary.isError && !summary.isFetching && (
+                <p className="field-error mt-3">Could not generate a summary: {errorMessage(summary.error)}</p>
+              )}
+            </div>
+          </IntelligenceCard>
+
           <IntelligenceCard id="tech" focused={focusedCard} onFocus={setFocusedCard} headerIcon={Layers} title="Tech stack">
             {languageBreakdown.length > 0 || frameworkGroups.length > 0 ? (
               <>
@@ -513,79 +658,17 @@ export function RepositoryOverview({ data, onExploreStructure, askPrefill }) {
               <p className="card-subtitle">No files found.</p>
             )}
           </IntelligenceCard>
-
-          <IntelligenceCard
-            id="ai"
-            focused={focusedCard}
-            onFocus={setFocusedCard}
-            headerIcon={Sparkles}
-            title={summary.data && !summary.isFetching ? 'AI repository brief' : 'Understand this repository'}
-          >
-            {!summary.data && !summary.isFetching && (
-              <div className="intel-ai-empty">
-                <p className="card-subtitle">
-                  Get an AI-generated explanation of the architecture, important modules, and how the major pieces
-                  work together.
-                </p>
-                <button type="button" className="btn btn-outline mt-3" onClick={() => summary.refetch()}>
-                  Generate AI brief →
-                </button>
-                {summary.isError && (
-                  <p className="field-error mt-3">Could not generate a summary: {errorMessage(summary.error)}</p>
-                )}
-              </div>
-            )}
-
-            {summary.isFetching && <SummaryLoadingState />}
-
-            {summary.data && !summary.isFetching && (
-              <>
-                <div className="mode-toggle">
-                  <button
-                    type="button"
-                    className={summaryMode === 'beginner' ? 'mode-btn mode-btn-active' : 'mode-btn'}
-                    onClick={() => setSummaryMode('beginner')}
-                  >
-                    Beginner
-                  </button>
-                  <button
-                    type="button"
-                    className={summaryMode === 'developer' ? 'mode-btn mode-btn-active' : 'mode-btn'}
-                    onClick={() => setSummaryMode('developer')}
-                  >
-                    Developer
-                  </button>
-                </div>
-                <p className="summary-text intel-summary-text">
-                  {summaryMode === 'beginner' ? summary.data.beginner_summary : summary.data.developer_summary}
-                </p>
-                <button type="button" className="link-button mt-3" onClick={() => summary.refetch()}>
-                  Regenerate
-                </button>
-              </>
-            )}
-          </IntelligenceCard>
         </div>
       </section>
 
-      <section className="overview-block overview-block-tight">
-        <h2>Engineering signals</h2>
-        {insights.length > 0 ? (
-          <ol className="insight-grid">
-            {insights.map((insight, index) => (
-              <li key={insight.title} className="insight-item">
-                <span className="insight-index">{String(index + 1).padStart(2, '0')}</span>
-                <div>
-                  <p className="insight-title">{insight.title}</p>
-                  <p className="insight-body">{insight.body}</p>
-                </div>
-              </li>
-            ))}
-          </ol>
-        ) : (
-          <p className="card-subtitle">Nothing notable surfaced yet.</p>
-        )}
-      </section>
+      <RepositoryBriefDrawer
+        open={briefOpen}
+        onClose={() => setBriefOpen(false)}
+        repositoryName={data.repository_name}
+        summary={summary}
+        summaryMode={summaryMode}
+        onSummaryModeChange={setSummaryMode}
+      />
     </div>
   )
 }
