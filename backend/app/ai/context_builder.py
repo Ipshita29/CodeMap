@@ -46,13 +46,19 @@ def _fuzzy_match(keyword: str, candidate: str) -> bool:
     return False
 
 
-def _format_folder_tree(tree: dict, prefix: str = "", depth: int = 0, max_depth: int = 2) -> list[str]:
+def _format_repository_tree(nodes: list, prefix: str = "", depth: int = 0, max_depth: int = 2) -> list[str]:
+    """Renders the canonical repository_tree's directories (same tree the
+    Architecture Repository Map shows) as indented lines for the AI prompt --
+    directories only, same as before, to stay within the folder-structure
+    summary this section has always been rather than a full file listing."""
     if depth >= max_depth:
         return []
     lines: list[str] = []
-    for name, children in tree.items():
-        lines.append(f"{prefix}{name}/")
-        lines.extend(_format_folder_tree(children, prefix + "  ", depth + 1, max_depth))
+    for node in nodes:
+        if node.type != "directory":
+            continue
+        lines.append(f"{prefix}{node.name}/")
+        lines.extend(_format_repository_tree(node.children or [], prefix + "  ", depth + 1, max_depth))
     return lines
 
 
@@ -107,7 +113,7 @@ class RepositoryContextBuilder:
             f"{language} ({count} files)" for language, count in list(self.day2_result.languages.items())[:8]
         )
         frameworks = ", ".join(self.day2_result.frameworks) or "none detected"
-        tree_lines = _format_folder_tree(self.day2_result.folder_tree)
+        tree_lines = _format_repository_tree(self.day2_result.repository_tree)
         tree_text = "\n".join(tree_lines[:40]) or "(flat, no subfolders)"
 
         return (

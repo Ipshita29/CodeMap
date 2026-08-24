@@ -555,7 +555,12 @@ export function RepositoryOverview({ data, onExploreStructure, askPrefill }) {
   const topFolders = computeTopFolders(data.files)
   const languageBreakdown = computeLanguageBreakdown(data.files)
   const frameworkGroups = mergeFrameworkGroups(groupFrameworksByCategory(frameworks))
-  const contributors = gitSummary.data?.has_git_history ? gitSummary.data.activity.contributors : null
+  // Repository-wide contributor count (full commit history), not the
+  // recent-activity window Git History's own contributor stat is scoped to
+  // -- see GitAnalyzer.repository_contributors for why these are kept
+  // distinct instead of one ambiguous "contributors" number.
+  const contributors = gitSummary.data?.has_git_history ? gitSummary.data.repository_contributors : null
+  const contributorsTruncated = gitSummary.data?.repository_contributors_truncated ?? false
 
   return (
     <div className="overview">
@@ -578,7 +583,11 @@ export function RepositoryOverview({ data, onExploreStructure, askPrefill }) {
         </span>
         {contributors != null && (
           <span>
-            <strong>{contributors}</strong> contributor{contributors === 1 ? '' : 's'}
+            <strong>
+              {contributors}
+              {contributorsTruncated ? '+' : ''}
+            </strong>{' '}
+            contributor{contributors === 1 && !contributorsTruncated ? '' : 's'}
           </span>
         )}
       </div>

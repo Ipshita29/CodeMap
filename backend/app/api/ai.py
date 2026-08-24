@@ -10,10 +10,10 @@ from app.ai.prompts import (
     DEVELOPER_SUMMARY_PROMPT,
     REPOSITORY_CHAT_PROMPT,
 )
-from app.analyzer.repository_analyzer import RepositoryAnalyzer
 from app.models.ai import ChatRequest, ChatResponse, RepositorySummaryResponse
 from app.services.code_intelligence_service import get_or_build_code_intelligence
 from app.services.git_service import git_service
+from app.services.repository_snapshot import get_repository_snapshot
 from app.utils.exceptions import (
     AIRequestTimeoutError,
     AIServiceError,
@@ -27,7 +27,7 @@ router = APIRouter(prefix="/repository", tags=["ai"])
 
 def _get_context_builder(repository_path: Path) -> RepositoryContextBuilder:
     try:
-        day2_result = RepositoryAnalyzer(repository_path).analyze()
+        day2_result = get_repository_snapshot(repository_path)
     except RepositoryAnalysisError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 

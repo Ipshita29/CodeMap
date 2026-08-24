@@ -3,12 +3,12 @@ import logging
 
 from app.ai.ai_service import ai_service
 from app.ai.prompts import IMPACT_EXPLANATION_PROMPT
-from app.analyzer.repository_analyzer import RepositoryAnalyzer
 from app.graph.relationship_index import RelationshipIndex
 from app.impact.impact_analyzer import ImpactAnalyzer, ImpactAnalyzerError
 from app.impact.impact_models import ImpactResponse
 from app.services.code_intelligence_service import get_or_build_code_intelligence
 from app.services.git_service import git_service
+from app.services.repository_snapshot import get_repository_snapshot
 from app.utils.exceptions import AIRequestTimeoutError, AIServiceError, AIServiceNotConfiguredError
 
 logger = logging.getLogger(__name__)
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 def analyze_change_impact(file: str) -> ImpactResponse:
     repository_path = git_service.get_latest_cloned_repository()
-    day2_result = RepositoryAnalyzer(repository_path).analyze()
+    day2_result = get_repository_snapshot(repository_path)
     intelligence = get_or_build_code_intelligence(repository_path, day2_result)
     index = RelationshipIndex(intelligence)
 

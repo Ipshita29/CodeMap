@@ -74,7 +74,7 @@ class GraphBuilder:
                     edges=edges,
                     mode="folders",
                     truncated=True,
-                    total_files=total_files,
+                    analyzed_file_count=total_files,
                     message=(
                         f"'{focus}' contains {len(scoped)} files. Showing its subfolders — "
                         "click one or use search to explore specific files."
@@ -90,7 +90,7 @@ class GraphBuilder:
                 edges=edges,
                 mode="files",
                 truncated=len(scoped) < total_files,
-                total_files=total_files,
+                analyzed_file_count=total_files,
                 message=f"Showing {len(scoped)} files under '{focus}' and their direct connections.",
             )
 
@@ -101,9 +101,9 @@ class GraphBuilder:
                 edges=edges,
                 mode="folders",
                 truncated=True,
-                total_files=total_files,
+                analyzed_file_count=total_files,
                 message=(
-                    f"This repository has {total_files} source files. Showing the top-level folder "
+                    f"{total_files} files have analyzable code relationships. Showing the top-level folder "
                     "structure first — click a folder or use search to explore specific files."
                 ),
             )
@@ -114,7 +114,7 @@ class GraphBuilder:
         edges = self._build_file_edges(file_edges, all_paths)
         edges += self._build_external_edges(external_by_file, all_paths)
         return GraphResponse(
-            nodes=nodes, edges=edges, mode="files", truncated=False, total_files=total_files, message=None
+            nodes=nodes, edges=edges, mode="files", truncated=False, analyzed_file_count=total_files, message=None
         )
 
     # -- layer heuristics -----------------------------------------------

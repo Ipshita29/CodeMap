@@ -1,17 +1,17 @@
 from fastapi import APIRouter, HTTPException
 
-from app.analyzer.repository_analyzer import RepositoryAnalyzer
 from app.graph.graph_service import build_repository_graph
 from app.impact.impact_analyzer import ImpactAnalyzerError
 from app.impact.impact_models import ImpactRequest, ImpactResponse
 from app.impact.impact_service import analyze_change_impact
-from app.models.analysis import AnalysisResponse
+from app.models.analysis import AnalysisResponse, RepositoryTreeResponse
 from app.models.code_intelligence import CodeAnalysisSummaryResponse, CodeIntelligenceResponse
 from app.models.graph import GraphResponse
 from app.models.repository import RepositoryImportRequest, RepositoryImportResponse
 from app.services.analysis_storage import analysis_storage
 from app.services.code_intelligence_service import run_and_store_code_intelligence
 from app.services.git_service import git_service
+from app.services.repository_snapshot import get_repository_snapshot
 from app.utils.exceptions import (
     InvalidGitHubURLError,
     NoRepositoryImportedError,
@@ -50,11 +50,36 @@ def analyze_repository() -> AnalysisResponse:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     try:
-        result = RepositoryAnalyzer(repository_path).analyze()
+        result = get_repository_snapshot(repository_path)
     except RepositoryAnalysisError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     return AnalysisResponse(**result.to_dict())
+
+
+@router.get("/tree", response_model=RepositoryTreeResponse)
+def get_repository_tree() -> RepositoryTreeResponse:
+    """The canonical file+folder tree -- the Architecture Repository Map
+    renders this directly rather than reconstructing a tree from the
+    (necessarily partial: parseable-files-only, node-capped) relationship
+    graph. `total_files`/`total_folders` here are the exact same numbers
+    Overview shows, since both come from the one cached snapshot."""
+    try:
+        repository_path = git_service.get_latest_cloned_repository()
+    except NoRepositoryImportedError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    try:
+        result = get_repository_snapshot(repository_path)
+    except RepositoryAnalysisError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    data = result.to_dict()
+    return RepositoryTreeResponse(
+        tree=data["repository_tree"],
+        total_files=data["total_files"],
+        total_folders=data["total_folders"],
+    )
 
 
 @router.post("/analyze-code", response_model=CodeAnalysisSummaryResponse)
@@ -65,7 +90,7 @@ def analyze_code() -> CodeAnalysisSummaryResponse:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     try:
-        day2_result = RepositoryAnalyzer(repository_path).analyze()
+        day2_result = get_repository_snapshot(repository_path)
     except RepositoryAnalysisError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 

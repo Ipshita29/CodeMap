@@ -22,6 +22,13 @@ MAX_HISTORY_LIMIT = 200
 MAX_FILE_HISTORY_LIMIT = 30
 MAX_ACTIVITY_COMMITS = 300
 MAX_HOTSPOTS = 10
+# Repository-level contributors need the FULL commit history, not the
+# recent-activity window above -- but only author identity, never
+# `commit.stats` (the expensive per-commit diff computation MAX_ACTIVITY_
+# COMMITS exists to bound), so this can afford to look much further back.
+# Still capped, as a safety valve for pathologically huge histories rather
+# than a limit real repositories are expected to hit.
+MAX_CONTRIBUTOR_SCAN_COMMITS = 20_000
 
 
 def _first_line(message: str) -> str:
@@ -79,6 +86,32 @@ class GitAnalyzer:
             for c in commits[:MAX_FILE_HISTORY_LIMIT]
         ]
         return entries, truncated
+
+    def repository_contributors(self) -> tuple[int, bool]:
+        """Unique commit authors across the FULL commit history -- this is
+        what "contributors" means as a repository-level fact (distinct from
+        `activity().contributors`, which is deliberately scoped to the last
+        MAX_ACTIVITY_COMMITS commits for its diff-stats work and represents
+        recent-activity authors, not the repository's all-time contributor
+        count). Author identity keys on email first since name alone
+        collides more often (shared display names, renamed accounts).
+
+        Returns (count, truncated) -- truncated is only ever true for
+        histories longer than MAX_CONTRIBUTOR_SCAN_COMMITS.
+        """
+        if not self.available:
+            return 0, False
+
+        authors: set[str] = set()
+        analyzed = 0
+        truncated = False
+        for commit in self.repo.iter_commits(max_count=MAX_CONTRIBUTOR_SCAN_COMMITS + 1):
+            if analyzed >= MAX_CONTRIBUTOR_SCAN_COMMITS:
+                truncated = True
+                break
+            analyzed += 1
+            authors.add(commit.author.email or commit.author.name or "unknown")
+        return len(authors), truncated
 
     def activity(self) -> GitActivityResponse:
         if not self.available:

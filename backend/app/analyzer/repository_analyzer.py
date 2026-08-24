@@ -2,7 +2,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 
 from app.analyzer.file_scanner import FileRecord, FileScanner
-from app.analyzer.folder_tree import FolderTree, FolderTreeBuilder
+from app.analyzer.folder_tree import TreeNode, build_repository_tree
 from app.analyzer.tech_stack_detector import TechStackDetector
 from app.utils.exceptions import RepositoryAnalysisError
 
@@ -14,12 +14,14 @@ class AnalysisResult:
     total_folders: int
     languages: dict[str, int]
     frameworks: list[str]
-    folder_tree: FolderTree
+    repository_tree: list[TreeNode]
     statistics: dict
     files: list[dict]
 
     def to_dict(self) -> dict:
-        return asdict(self)
+        data = asdict(self)
+        data["repository_tree"] = [node.to_dict() for node in self.repository_tree]
+        return data
 
 
 class RepositoryAnalyzer:
@@ -39,23 +41,20 @@ class RepositoryAnalyzer:
     def analyze(self) -> AnalysisResult:
         try:
             file_records = FileScanner(self.repository_path).scan()
-            folder_tree_builder = FolderTreeBuilder(self.repository_path)
-            folder_tree = folder_tree_builder.build()
         except OSError as exc:
             raise RepositoryAnalysisError(f"Failed to scan repository: {exc}") from exc
 
-        frameworks = TechStackDetector(
-            self.repository_path,
-            [record.path for record in file_records],
-        ).detect()
+        file_paths = [record.path for record in file_records]
+        repository_tree, total_folders = build_repository_tree(file_paths)
+        frameworks = TechStackDetector(self.repository_path, file_paths).detect()
 
         return AnalysisResult(
             repository_name=self.repository_path.name,
             total_files=len(file_records),
-            total_folders=folder_tree_builder.folder_count,
+            total_folders=total_folders,
             languages=self._count_languages(file_records),
             frameworks=frameworks,
-            folder_tree=folder_tree,
+            repository_tree=repository_tree,
             statistics=self._build_statistics(file_records),
             files=[asdict(record) for record in file_records],
         )

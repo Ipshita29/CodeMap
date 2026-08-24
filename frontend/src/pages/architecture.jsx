@@ -3,7 +3,14 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 
 import { RepositoryGraph } from '@/RepositoryGraph'
-import { analyzeChangeImpact, ApiError, fetchCodeIntelligence, fetchFileGitHistory, fetchRepositoryGraph } from '@/api'
+import {
+  analyzeChangeImpact,
+  ApiError,
+  fetchCodeIntelligence,
+  fetchFileGitHistory,
+  fetchRepositoryGraph,
+  fetchRepositoryTree,
+} from '@/api'
 import '../css/architecture.css'
 
 function errorMessage(error) {
@@ -53,53 +60,27 @@ function impactToGraphData(impactResult) {
   return { nodes, edges }
 }
 
-// Accepts { path, type } entries -- type is "file" for a leaf file node, or
-// "folder" for a real folder-graph-node (the repository-map's aggregated
-// view, used for large repos, only ever returns folder/external nodes, no
-// file nodes -- without this, a big repo's sidebar had nothing to show).
-// Path segments with no matching entry are still rendered, just inert.
-function buildFileTree(entries) {
-  const root = {}
-  for (const { path, type } of entries) {
-    const parts = path.split('/')
-    let cursor = root
-    parts.forEach((part, index) => {
-      const isTerminal = index === parts.length - 1
-      cursor[part] ??= { name: part, path: parts.slice(0, index + 1).join('/'), isSelectable: false, isFolder: false }
-      if (isTerminal) {
-        cursor[part].isSelectable = true
-        cursor[part].isFolder = type === 'folder'
-      }
-      if (index < parts.length - 1) {
-        cursor[part].children ??= {}
-      }
-      cursor = cursor[part].children ?? cursor
-    })
-  }
-  return root
-}
-
+// Renders the canonical repository_tree straight from the backend (see
+// GET /repository/tree) -- every node here is a real file or directory the
+// scanner actually found, already hierarchical and sorted, so there's
+// nothing to reconstruct client-side. Unlike the old graph-derived tree,
+// every directory is a genuine node (never an inferred path segment), so
+// every entry is selectable.
 function FileTree({ nodes, selectedPath, onSelect }) {
-  const entries = Object.values(nodes).sort(
-    (a, b) => Number(a.isSelectable) - Number(b.isSelectable) || a.name.localeCompare(b.name),
-  )
-
   return (
     <ul className="file-tree">
-      {entries.map((entry) => (
+      {nodes.map((entry) => (
         <li key={entry.path}>
-          {entry.isSelectable ? (
-            <button
-              type="button"
-              className={`file-tree-item${entry.path === selectedPath ? ' file-tree-item-active' : ''}`}
-              onClick={() => onSelect(entry.path)}
-            >
-              {entry.isFolder ? `${entry.name}/` : entry.name}
-            </button>
-          ) : (
-            <span className="file-tree-folder">{entry.name}</span>
+          <button
+            type="button"
+            className={`file-tree-item${entry.path === selectedPath ? ' file-tree-item-active' : ''}`}
+            onClick={() => onSelect(entry.path, entry.type)}
+          >
+            {entry.type === 'directory' ? `${entry.name}/` : entry.name}
+          </button>
+          {entry.children && entry.children.length > 0 && (
+            <FileTree nodes={entry.children} selectedPath={selectedPath} onSelect={onSelect} />
           )}
-          {entry.children && <FileTree nodes={entry.children} selectedPath={selectedPath} onSelect={onSelect} />}
         </li>
       ))}
     </ul>
@@ -273,6 +254,12 @@ export function ArchitectureWorkspace({ onAskAbout }) {
     queryFn: () => fetchRepositoryGraph({ focus }),
   })
 
+  // The canonical repository tree (every real file/folder, from the same
+  // snapshot Overview's file/folder counts come from) -- independent of the
+  // relationship graph, which only ever covers files with a parseable
+  // import/call relationship. This is what the "Files" sidebar renders.
+  const treeQuery = useQuery({ queryKey: ['repository-tree'], queryFn: fetchRepositoryTree })
+
   // Only fetch once the graph call has succeeded: /repository/graph builds and
   // stores code intelligence on demand, so this is guaranteed to exist by then
   // instead of racing a second on-demand build.
@@ -326,12 +313,19 @@ export function ArchitectureWorkspace({ onAskAbout }) {
     }
   }
 
-  function handleTreeSelect(path) {
-    const original = graphQuery.data?.nodes.find((node) => node.id === path)
-    if (!original) return
-    selectNode(original)
-    if (original.type === 'folder') {
-      setFocus(original.id)
+  // `treeType` is "file" | "directory" from the canonical tree -- the graph
+  // only ever has a node for paths with an analyzed relationship, so a
+  // click on e.g. a README or a config file falls back to a lightweight
+  // synthetic node instead of silently doing nothing.
+  function handleTreeSelect(path, treeType) {
+    const graphNode = graphQuery.data?.nodes.find((node) => node.id === path)
+    const isFolder = treeType === 'directory'
+    const node =
+      graphNode ??
+      { id: path, type: isFolder ? 'folder' : 'file', data: { label: path.split('/').pop(), path } }
+    selectNode(node)
+    if (isFolder) {
+      setFocus(path)
     } else {
       setCenterRequest({ nodeId: path, key: Date.now() })
     }
@@ -378,15 +372,7 @@ export function ArchitectureWorkspace({ onAskAbout }) {
     return matched
   }, [mode, search, filteredNodes, filteredEdges])
 
-  const fileTree = useMemo(
-    () =>
-      buildFileTree(
-        rawNodes
-          .filter((node) => node.type === 'file' || node.type === 'folder')
-          .map((node) => ({ path: node.data.path, type: node.type })),
-      ),
-    [rawNodes],
-  )
+  const fileTree = treeQuery.data?.tree ?? []
 
   const impactGraph = useMemo(() => impactToGraphData(impact.data), [impact.data])
 
@@ -518,7 +504,11 @@ export function ArchitectureWorkspace({ onAskAbout }) {
           <div className="architecture-layout">
             <div className="architecture-sidebar">
               <p className="architecture-sidebar-title">Files</p>
-              <FileTree nodes={fileTree} selectedPath={selectedNode?.data?.path} onSelect={handleTreeSelect} />
+              {treeQuery.isPending ? (
+                <p className="card-subtitle">Loading files…</p>
+              ) : (
+                <FileTree nodes={fileTree} selectedPath={selectedNode?.data?.path} onSelect={handleTreeSelect} />
+              )}
             </div>
 
             <RepositoryGraph

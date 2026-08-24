@@ -57,3 +57,9 @@ class GitSummaryResponse(BaseModel):
     latest_commit: LatestCommit | None
     activity: GitActivityResponse
     timeline: list[CommitEntry]
+    # Repository-wide unique commit authors (full history) -- the number
+    # Overview shows as "contributors". Distinct from `activity.contributors`,
+    # which is scoped to the recent analyzed-commit window and labeled as
+    # such wherever it's shown (Git History).
+    repository_contributors: int
+    repository_contributors_truncated: bool

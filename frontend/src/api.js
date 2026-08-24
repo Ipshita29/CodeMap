@@ -54,6 +54,10 @@ export function fetchCodeIntelligence() {
   return apiRequest('/repository/code-intelligence', { method: 'GET' })
 }
 
+export function fetchRepositoryTree() {
+  return apiRequest('/repository/tree', { method: 'GET' })
+}
+
 export function fetchRepositoryGraph({ focus } = {}) {
   const query = focus ? `?focus=${encodeURIComponent(focus)}` : ''
   return apiRequest(`/repository/graph${query}`, { method: 'GET' })

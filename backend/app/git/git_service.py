@@ -25,9 +25,12 @@ def get_file_history(file_path: str) -> FileHistoryResponse:
 def get_git_summary() -> GitSummaryResponse:
     analyzer = _analyzer()
     timeline, _ = analyzer.history(15)
+    repository_contributors, contributors_truncated = analyzer.repository_contributors()
     return GitSummaryResponse(
         has_git_history=analyzer.available,
         latest_commit=analyzer.latest_commit(),
         activity=analyzer.activity(),
         timeline=timeline,
+        repository_contributors=repository_contributors,
+        repository_contributors_truncated=contributors_truncated,
     )

@@ -1,5 +1,6 @@
 import json
 import re
+import tomllib
 from pathlib import Path
 
 # Dependency name (as it appears in package.json) -> display name.
@@ -65,6 +66,8 @@ class TechStackDetector:
                 frameworks |= self._parse_package_json(relative_path)
             elif filename == "requirements.txt":
                 frameworks |= self._parse_requirements_txt(relative_path)
+            elif filename == "pyproject.toml":
+                frameworks |= self._parse_pyproject_toml(relative_path)
             elif filename in OTHER_MANIFESTS:
                 frameworks.add(OTHER_MANIFESTS[filename])
         return sorted(frameworks)
@@ -88,9 +91,33 @@ class TechStackDetector:
         except OSError:
             return set()
 
+        return self._match_python_requirement_strings(lines)
+
+    def _parse_pyproject_toml(self, relative_path: str) -> set[str]:
+        """PEP 621 (`[project.dependencies]` / `[project.optional-dependencies]`)
+        and Poetry (`[tool.poetry.dependencies]`) are both dependency
+        manifests just as real as requirements.txt -- most modern Python
+        projects declare dependencies here instead, so skipping this file
+        would silently miss their actual tech stack evidence."""
+        try:
+            data = tomllib.loads((self.root / relative_path).read_text(encoding="utf-8"))
+        except (OSError, tomllib.TOMLDecodeError):
+            return set()
+
+        requirement_strings: list[str] = list(data.get("project", {}).get("dependencies", []))
+        for extra_dependencies in data.get("project", {}).get("optional-dependencies", {}).values():
+            requirement_strings.extend(extra_dependencies)
+
+        poetry_dependencies = data.get("tool", {}).get("poetry", {}).get("dependencies", {})
+        requirement_strings.extend(poetry_dependencies.keys())
+
+        return self._match_python_requirement_strings(requirement_strings)
+
+    @staticmethod
+    def _match_python_requirement_strings(requirement_strings: list[str]) -> set[str]:
         detected: set[str] = set()
-        for line in lines:
-            package_name = re.split(r"[=<>!~\[; ]", line.strip().lower())[0]
+        for requirement in requirement_strings:
+            package_name = re.split(r"[=<>!~\[; ]", requirement.strip().lower())[0]
             if package_name in REQUIREMENTS_TXT_FRAMEWORKS:
                 detected.add(REQUIREMENTS_TXT_FRAMEWORKS[package_name])
         return detected
