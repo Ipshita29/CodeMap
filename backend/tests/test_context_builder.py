@@ -1,8 +1,8 @@
 from pathlib import Path
 
-from app.ai.context_builder import RepositoryContextBuilder, _extract_keywords, _fuzzy_match
-from app.analyzer.repository_analyzer import RepositoryAnalyzer
-from app.services.code_intelligence_service import run_and_store_code_intelligence
+from ai import RepositoryContextBuilder, _extract_keywords, _fuzzy_match
+from analyzer import run_and_store_code_intelligence
+from repository import RepositoryAnalyzer
 
 
 def _build_auth_repo(tmp_path: Path) -> Path:
@@ -65,6 +65,19 @@ def test_build_context_falls_back_to_overview_with_no_keyword_matches(tmp_path):
     assert context.sources == []
     assert "Repository metadata" in context.system_context
     assert "Code intelligence summary" in context.system_context
+
+
+def test_context_sources_are_always_real_repository_files(tmp_path):
+    # Regression guard for AI grounding: every source cited in an answer's
+    # context must correspond to a file the canonical snapshot actually
+    # found -- never a fabricated or stale path.
+    builder = _build_context_builder(tmp_path)
+    real_paths = {f["path"] for f in builder.day2_result.files}
+
+    context = builder.build_context("How does login work?")
+
+    assert context.sources, "expected at least one source for a matched question"
+    assert set(context.sources) <= real_paths
 
 
 def test_large_file_extracts_matching_symbol_only(tmp_path):

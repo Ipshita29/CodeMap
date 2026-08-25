@@ -1,8 +1,6 @@
 import pytest
 
-from app.analyzer.parser.base_parser import ParseError
-from app.analyzer.parser.javascript_parser import JavaScriptParser
-from app.analyzer.resolver import LocalDependencyResolver
+from analyzer import JavaScriptParser, LocalDependencyResolver, ParseError
 
 SAMPLE = """import axios from "axios";
 import User from "./User";

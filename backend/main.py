@@ -1,8 +1,22 @@
+"""main.py -- application startup and backend initialization only.
+
+Creates the FastAPI app, configures CORS, and registers api.py's routers.
+No route logic, no analysis logic -- see api.py / repository.py /
+analyzer.py / ai.py for that.
+"""
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import ai, health, repository, repository_export, repository_git, repository_health
-from app.config.settings import settings
+from api import (
+    ai_router,
+    export_router,
+    git_router,
+    health_analysis_router,
+    health_router,
+    repository_router,
+)
+from config import settings
 
 app = FastAPI(title=settings.app_name)
 
@@ -14,9 +28,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(health.router)
-app.include_router(repository.router)
-app.include_router(ai.router)
-app.include_router(repository_git.router)
-app.include_router(repository_health.router)
-app.include_router(repository_export.router)
+app.include_router(health_router)
+app.include_router(repository_router)
+app.include_router(ai_router)
+app.include_router(git_router)
+app.include_router(health_analysis_router)
+app.include_router(export_router)

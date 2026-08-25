@@ -1,8 +1,12 @@
+"""Application configuration -- environment variables, paths, and settings.
+Loaded once as a module-level singleton (`settings`) so every other module
+reads the same values instead of re-parsing the environment."""
+
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent
+BACKEND_ROOT = Path(__file__).resolve().parent
 
 
 class Settings(BaseSettings):

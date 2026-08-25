@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from app.analyzer.repository_analyzer import RepositoryAnalyzer
+from repository import RepositoryAnalyzer
 
 
 def _write(repo: Path, relative_path: str, content: str = "x = 1\n") -> None:
@@ -92,3 +92,71 @@ def test_total_files_and_folders_match_the_canonical_tree_exactly(tmp_path):
     # src, src/flask, tests, docs -- root itself is never counted as a folder.
     assert result.total_folders == 4
     assert result.total_files == 5
+
+
+def _all_tree_paths(nodes, kind: str) -> list[str]:
+    paths = []
+    for node in nodes:
+        if node.type == kind:
+            paths.append(node.path)
+        if node.children is not None:
+            paths.extend(_all_tree_paths(node.children, kind))
+    return paths
+
+
+def test_every_reported_file_actually_exists_on_disk(tmp_path):
+    # Regression guard for CodeMap.3 -- the canonical tree must never claim
+    # a file that isn't actually there (fabricated/stale entries).
+    _write(tmp_path, "src/flask/app.py")
+    _write(tmp_path, "tests/test_basic.py")
+    _write(tmp_path, "README.md")
+
+    result = RepositoryAnalyzer(tmp_path).analyze()
+
+    for path in _all_tree_paths(result.repository_tree, "file"):
+        assert (tmp_path / path).is_file(), f"tree claims {path} exists but it does not"
+    for record in result.files:
+        assert (tmp_path / record["path"]).is_file()
+
+
+def test_no_duplicate_file_paths_in_the_canonical_tree_or_file_list(tmp_path):
+    _write(tmp_path, "src/flask/app.py")
+    _write(tmp_path, "src/flask/helpers.py")
+    _write(tmp_path, "tests/test_basic.py")
+
+    result = RepositoryAnalyzer(tmp_path).analyze()
+
+    tree_paths = _all_tree_paths(result.repository_tree, "file")
+    assert len(tree_paths) == len(set(tree_paths))
+
+    file_list_paths = [record["path"] for record in result.files]
+    assert len(file_list_paths) == len(set(file_list_paths))
+
+
+def test_repository_tree_omits_nothing_the_file_list_reports(tmp_path):
+    _write(tmp_path, "src/flask/app.py")
+    _write(tmp_path, "src/flask/helpers.py")
+    _write(tmp_path, "tests/test_basic.py")
+    _write(tmp_path, "docs/index.md")
+
+    result = RepositoryAnalyzer(tmp_path).analyze()
+
+    tree_paths = set(_all_tree_paths(result.repository_tree, "file"))
+    file_list_paths = {record["path"] for record in result.files}
+    assert tree_paths == file_list_paths
+
+
+def test_language_percentages_reflect_actual_file_contents_not_guesses(tmp_path):
+    _write(tmp_path, "src/app.py")
+    _write(tmp_path, "src/helpers.py")
+    _write(tmp_path, "src/main.js")
+    _write(tmp_path, "README.md")
+
+    result = RepositoryAnalyzer(tmp_path).analyze()
+
+    # Every language present must be backed by at least one real file of
+    # that language -- none of it is estimated or hard-coded.
+    assert result.languages["Python"] == 2
+    assert result.languages["JavaScript"] == 1
+    assert sum(result.languages.values()) <= result.total_files
+    assert "NotARealLanguage" not in result.languages

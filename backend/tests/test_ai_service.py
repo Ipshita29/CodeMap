@@ -1,8 +1,8 @@
 import pytest
 
-from app.ai.ai_service import AIService
-from app.config.settings import settings
-from app.utils.exceptions import AIServiceNotConfiguredError
+from ai import AIService
+from config import settings
+from utils import AIServiceNotConfiguredError
 
 
 def test_complete_raises_when_api_key_missing(monkeypatch):

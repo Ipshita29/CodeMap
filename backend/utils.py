@@ -1,18 +1,87 @@
-"""Renders an already-assembled Markdown report (built client-side from data
-the UI already has -- see the frontend export builder) into a clean static
-PDF. Deliberately not a general-purpose Markdown renderer: just enough
-structure (headings, bullet lines, paragraphs, horizontal-rule breaks) for
-CodeMap's own report shape. No attempt is made to reproduce the interactive
-React Flow graph -- a static report is the explicit goal here.
-"""
-
-from __future__ import annotations
+"""Genuinely shared utilities -- error types used across repository/analyzer/
+ai/api, the GitHub URL validator used before a clone is attempted, and the
+Markdown-to-PDF export renderer. Nothing here is heavy or domain-specific
+enough to belong in one of the other modules; if it ever grows into
+repository/analysis/AI logic, it belongs in that module instead, not here."""
 
 import re
 import unicodedata
 
 from fpdf import FPDF
 from fpdf.enums import Align, XPos, YPos
+from pydantic import BaseModel, Field
+
+
+# -- Exceptions --------------------------------------------------------------
+# Raised throughout repository.py/analyzer.py/ai.py and translated to HTTP
+# responses in api.py -- one shared vocabulary of failure modes instead of
+# each module inventing its own.
+
+
+class InvalidGitHubURLError(Exception):
+    """Raised when a provided string is not a valid, clonable GitHub repository URL."""
+
+
+class RepositoryCloneError(Exception):
+    """Raised when cloning a repository fails."""
+
+
+class NoRepositoryImportedError(Exception):
+    """Raised when analysis is requested but no repository has been imported yet."""
+
+
+class RepositoryAnalysisError(Exception):
+    """Raised when a cloned repository cannot be analyzed."""
+
+
+class AIServiceError(Exception):
+    """Base class for AI service failures."""
+
+
+class AIServiceNotConfiguredError(AIServiceError):
+    """Raised when no OpenAI API key is configured."""
+
+
+class AIRequestTimeoutError(AIServiceError):
+    """Raised when a request to the AI provider times out."""
+
+
+# -- Validation ----------------------------------------------------------
+
+# Only allow https://github.com/<owner>/<repo>[.git] — this both rejects
+# malformed input and closes off alternate git URL schemes (e.g. `ext::`,
+# `file://`, embedded flags) that could otherwise be abused via GitPython.
+GITHUB_URL_PATTERN = re.compile(
+    r"^https://github\.com/"
+    r"(?P<owner>[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)/"
+    r"(?P<repo>[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?)"
+    r"(?:\.git)?/?$"
+)
+
+
+def validate_github_url(url: str) -> str:
+    """Validate a GitHub repository URL and return its repository name.
+
+    Raises InvalidGitHubURLError if the URL is not a well-formed,
+    clonable GitHub repository URL.
+    """
+    match = GITHUB_URL_PATTERN.match(url.strip())
+    if not match:
+        raise InvalidGitHubURLError(f"'{url}' is not a valid GitHub repository URL.")
+
+    repo_name = match.group("repo")
+    if repo_name in {".", ".."}:
+        raise InvalidGitHubURLError(f"'{url}' is not a valid GitHub repository URL.")
+
+    return repo_name
+
+
+# =====================================================================
+# PDF export -- renders an already-assembled Markdown report (built
+# client-side from data the UI already has) into a static PDF. No
+# repository access, no re-running analysis or AI -- pure rendering,
+# which is why it lives here rather than in repository/analyzer/ai.py.
+# =====================================================================
 
 PAGE_MARGIN = 15
 # multi_cell's defaults are new_x=RIGHT (cursor stays wherever the last
@@ -110,3 +179,8 @@ def render_markdown_to_pdf(title: str, markdown_text: str) -> bytes:
         pdf.multi_cell(0, 6, _wrappable(_ascii_safe(line)), **_CELL_KWARGS)
 
     return bytes(pdf.output())
+
+
+class PdfExportRequest(BaseModel):
+    title: str
+    markdown: str = Field(max_length=300_000)

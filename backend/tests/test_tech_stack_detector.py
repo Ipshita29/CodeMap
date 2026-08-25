@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from app.analyzer.tech_stack_detector import TechStackDetector
+from repository import TechStackDetector
 
 
 def test_detects_frameworks_from_pep621_pyproject_dependencies(tmp_path: Path):

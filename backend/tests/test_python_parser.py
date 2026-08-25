@@ -1,8 +1,6 @@
 import pytest
 
-from app.analyzer.parser.base_parser import ParseError
-from app.analyzer.parser.python_parser import PythonParser
-from app.analyzer.resolver import LocalDependencyResolver
+from analyzer import LocalDependencyResolver, ParseError, PythonParser
 
 SAMPLE = """from fastapi import FastAPI
 from services.user import UserService
