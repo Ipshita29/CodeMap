@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ArrowRight, ChevronUp, Code2, Folder, FolderTree, Layers, Loader2, Sparkles, X } from 'lucide-react'
+import { ArrowRight, ChevronUp, Code2, Folder, FolderTree, History, Layers, Loader2, Sparkles, X } from 'lucide-react'
 import { toast } from 'sonner'
 import {
   SiAngular,
@@ -49,7 +49,14 @@ import {
   SiYaml,
 } from 'react-icons/si'
 
-import { ApiError, askRepositoryQuestion, fetchGitSummary, generateRepositorySummary } from '@/api'
+import {
+  ApiError,
+  askRepositoryQuestion,
+  clearChatHistory,
+  fetchChatHistory,
+  fetchGitSummary,
+  generateRepositorySummary,
+} from '@/api'
 import { buildSuggestedQuestions, computeLanguageBreakdown, computeTopFolders } from '@/repository-intelligence'
 import '../css/overview.css'
 
@@ -265,21 +272,160 @@ function SourcesList({ sources }) {
   )
 }
 
+const RECENT_QUESTIONS_PREVIEW_COUNT = 3
+
+function historyDayLabel(askedAtSeconds) {
+  const date = new Date(askedAtSeconds * 1000)
+  const now = new Date()
+  const startOfDay = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
+  const diffDays = Math.round((startOfDay(now) - startOfDay(date)) / 86_400_000)
+  if (diffDays === 0) return 'Today'
+  if (diffDays === 1) return 'Yesterday'
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' })
+}
+
+// Entries arrive newest-first from the API, so same-day entries are always
+// adjacent -- one pass is enough to bucket them under a running day label.
+function groupHistoryByDay(entries) {
+  const groups = []
+  let currentLabel = null
+  for (const entry of entries) {
+    const label = historyDayLabel(entry.asked_at)
+    if (label !== currentLabel) {
+      currentLabel = label
+      groups.push([label, []])
+    }
+    groups[groups.length - 1][1].push(entry)
+  }
+  return groups
+}
+
+// The "Recent questions" row + its small anchored popover -- lightweight
+// navigation over already-fetched history, not another copy of it. Nothing
+// here reaches the network: selecting or clearing history is handled by
+// the callbacks the parent passes in, which own the actual cache/query
+// state (see AskCodeMapPanel).
+function AskCommandHistory({ entries, activeEntry, onSelect, onClear, isClearing }) {
+  const [open, setOpen] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+    function handleKeydown(event) {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    window.addEventListener('keydown', handleKeydown)
+    return () => window.removeEventListener('keydown', handleKeydown)
+  }, [open])
+
+  if (entries.length === 0) return null
+
+  const preview = entries.slice(0, RECENT_QUESTIONS_PREVIEW_COUNT)
+  const grouped = groupHistoryByDay(entries)
+
+  function pick(entry) {
+    onSelect(entry)
+    setOpen(false)
+  }
+
+  return (
+    <div className="ask-recent">
+      <div className="ask-recent-header">
+        <span className="ask-recent-title">
+          <History size={13} />
+          Recent questions
+        </span>
+        <button type="button" className="ask-recent-view-all" onClick={() => setOpen((prev) => !prev)}>
+          View all →
+        </button>
+      </div>
+
+      <div className="ask-recent-list">
+        {preview.map((entry) => (
+          <button
+            key={entry.id}
+            type="button"
+            className={`ask-recent-item${activeEntry?.id === entry.id ? ' ask-recent-item-active' : ''}`}
+            onClick={() => onSelect(entry)}
+            title={entry.question}
+          >
+            {entry.question}
+          </button>
+        ))}
+      </div>
+
+      {open && (
+        <>
+          <div className="ask-history-popover-backdrop" onClick={() => setOpen(false)} aria-hidden="true" />
+          <div className="ask-history-popover" role="dialog" aria-label="Question history">
+            <div className="ask-history-popover-header">
+              <span className="ask-history-popover-title">
+                <History size={13} />
+                Question history
+              </span>
+              <button
+                type="button"
+                className="ask-history-popover-close"
+                onClick={() => setOpen(false)}
+                aria-label="Close"
+              >
+                <X size={14} />
+              </button>
+            </div>
+
+            <div className="ask-history-popover-body">
+              {grouped.map(([label, groupEntries]) => (
+                <div key={label} className="ask-history-group">
+                  <p className="ask-history-group-label">{label}</p>
+                  {groupEntries.map((entry) => (
+                    <button
+                      key={entry.id}
+                      type="button"
+                      className={`ask-history-row${activeEntry?.id === entry.id ? ' ask-history-row-active' : ''}`}
+                      onClick={() => pick(entry)}
+                      title={entry.question}
+                    >
+                      {entry.question}
+                    </button>
+                  ))}
+                </div>
+              ))}
+            </div>
+
+            <button type="button" className="ask-history-clear" onClick={onClear} disabled={isClearing}>
+              {isClearing ? 'Clearing…' : 'Clear history'}
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 // The single Ask CodeMap experience -- a compact command bar on Overview
 // that expands inline on focus/Cmd+K rather than a permanently-open card.
 // `prefill` (an object `{ question, key }`) is how other pages hand it a
 // context-specific question: bump `key` to force the effect even if the
 // question text repeats, since a plain string wouldn't re-trigger.
+//
+// Only ONE answer is ever shown at a time (`activeEntry`) instead of a
+// growing stacked log -- previously asked questions live in the compact
+// history list instead, backed by GET /repository/chat/history. Selecting
+// one just swaps `activeEntry` to already-fetched data (no request, no
+// regeneration); the backend's own answer cache is what makes re-asking an
+// existing question instant too (see app/ai/answer_cache.py).
 function AskCodeMapPanel({ data, prefill, sectionRef }) {
   const [question, setQuestion] = useState('')
-  const [conversation, setConversation] = useState([])
+  const [activeEntry, setActiveEntry] = useState(null)
   const [expanded, setExpanded] = useState(false)
   const chat = useMutation({ mutationFn: askRepositoryQuestion })
+  const history = useQuery({ queryKey: ['chat-history'], queryFn: fetchChatHistory, retry: false })
+  const clearHistory = useMutation({ mutationFn: clearChatHistory })
   const queryClient = useQueryClient()
   const inputRef = useRef(null)
 
   const codeIntelligence = queryClient.getQueryData(['code-intelligence'])
   const suggestions = buildSuggestedQuestions(data, codeIntelligence).slice(0, 5)
+  const historyEntries = history.data?.entries ?? []
 
   useEffect(() => {
     if (!prefill) return
@@ -311,9 +457,13 @@ function AskCodeMapPanel({ data, prefill, sectionRef }) {
       { question: trimmed, mode: 'developer' },
       {
         onSuccess: (result) => {
-          setConversation((prev) => [{ question: trimmed, ...result }, ...prev])
+          setActiveEntry(result)
           setQuestion('')
           setExpanded(true)
+          // Cheap re-fetch of a small list -- keeps the history list in
+          // sync whether this was a fresh answer or a cache hit, without
+          // hand-maintaining a second copy of the same data client-side.
+          queryClient.invalidateQueries({ queryKey: ['chat-history'] })
         },
         onError: (error) => toast.error('Could not get an answer', { description: errorMessage(error) }),
       },
@@ -326,12 +476,29 @@ function AskCodeMapPanel({ data, prefill, sectionRef }) {
     inputRef.current?.focus()
   }
 
+  // Selecting a history entry never hits the network -- the full answer is
+  // already sitting in the history list we fetched.
+  function selectHistoryEntry(entry) {
+    setActiveEntry(entry)
+    setExpanded(true)
+  }
+
+  function handleClearHistory() {
+    clearHistory.mutate(undefined, {
+      onSuccess: () => {
+        setActiveEntry(null)
+        queryClient.invalidateQueries({ queryKey: ['chat-history'] })
+      },
+      onError: (error) => toast.error('Could not clear history', { description: errorMessage(error) }),
+    })
+  }
+
   // Losing focus only collapses the bar back down when there's nothing to
   // preserve -- an in-progress question or an existing answer stays open;
   // the chevron in the header is the explicit way to close those.
   function handleBlur(event) {
     if (event.currentTarget.contains(event.relatedTarget)) return
-    if (question.trim() === '' && conversation.length === 0 && !chat.isPending) setExpanded(false)
+    if (question.trim() === '' && !activeEntry && !chat.isPending) setExpanded(false)
   }
 
   function handleKeyDown(event) {
@@ -395,15 +562,21 @@ function AskCodeMapPanel({ data, prefill, sectionRef }) {
         </div>
       )}
 
-      {expanded && conversation.length > 0 && (
-        <div className="conversation-list">
-          {conversation.map((entry, index) => (
-            <div className="conversation-entry" key={`${entry.question}-${index}`}>
-              <p className="conversation-question">{entry.question}</p>
-              <p className="conversation-answer">{entry.answer}</p>
-              <SourcesList sources={entry.sources} />
-            </div>
-          ))}
+      {expanded && (
+        <AskCommandHistory
+          entries={historyEntries}
+          activeEntry={activeEntry}
+          onSelect={selectHistoryEntry}
+          onClear={handleClearHistory}
+          isClearing={clearHistory.isPending}
+        />
+      )}
+
+      {expanded && activeEntry && (
+        <div className="conversation-entry">
+          <p className="conversation-question">{activeEntry.question}</p>
+          <p className="conversation-answer">{activeEntry.answer}</p>
+          <SourcesList sources={activeEntry.sources} />
         </div>
       )}
     </section>

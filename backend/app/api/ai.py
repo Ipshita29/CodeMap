@@ -2,6 +2,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
+from app.ai import answer_cache
 from app.ai.ai_service import ai_service
 from app.ai.context_builder import RepositoryContextBuilder
 from app.ai.prompts import (
@@ -10,7 +11,7 @@ from app.ai.prompts import (
     DEVELOPER_SUMMARY_PROMPT,
     REPOSITORY_CHAT_PROMPT,
 )
-from app.models.ai import ChatRequest, ChatResponse, RepositorySummaryResponse
+from app.models.ai import ChatHistoryEntry, ChatHistoryResponse, ChatRequest, ChatResponse, RepositorySummaryResponse
 from app.services.code_intelligence_service import get_or_build_code_intelligence
 from app.services.git_service import git_service
 from app.services.repository_snapshot import get_repository_snapshot
@@ -78,6 +79,12 @@ def chat_with_repository(payload: ChatRequest) -> ChatResponse:
     except NoRepositoryImportedError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
+    # Cache check comes before any repository re-analysis or AI call -- a
+    # hit costs nothing beyond a dict lookup and an mtime stat().
+    cached = answer_cache.lookup(repository_path, payload.mode, payload.question)
+    if cached is not None:
+        return ChatResponse(**cached.__dict__, cached=True)
+
     builder = _get_context_builder(repository_path)
     context = builder.build_context(payload.question)
 
@@ -85,4 +92,29 @@ def chat_with_repository(payload: ChatRequest) -> ChatResponse:
     user_prompt = f"{context.system_context}\n\n## Question\n{payload.question}"
     answer = _complete_or_raise(system_prompt, user_prompt)
 
-    return ChatResponse(answer=answer, sources=context.sources)
+    entry = answer_cache.store(repository_path, payload.mode, payload.question, answer, context.sources)
+    return ChatResponse(**entry.__dict__, cached=False)
+
+
+@router.get("/chat/history", response_model=ChatHistoryResponse)
+def get_chat_history() -> ChatHistoryResponse:
+    """Every question asked (and its saved answer) for the repository's
+    current version, newest first -- selecting one in the UI just re-renders
+    already-fetched data, no request or AI call involved."""
+    try:
+        repository_path = git_service.get_latest_cloned_repository()
+    except NoRepositoryImportedError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    entries = answer_cache.list_history(repository_path)
+    return ChatHistoryResponse(entries=[ChatHistoryEntry(**entry.__dict__) for entry in entries])
+
+
+@router.delete("/chat/history", status_code=204)
+def clear_chat_history() -> None:
+    try:
+        repository_path = git_service.get_latest_cloned_repository()
+    except NoRepositoryImportedError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    answer_cache.clear_history(repository_path)

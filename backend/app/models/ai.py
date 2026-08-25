@@ -18,9 +18,24 @@ class ChatRequest(BaseModel):
         return stripped
 
 
-class ChatResponse(BaseModel):
+class ChatHistoryEntry(BaseModel):
+    id: str
+    question: str
+    mode: ChatMode
     answer: str
     sources: list[str]
+    asked_at: float
+
+
+class ChatResponse(ChatHistoryEntry):
+    # True when this came straight from the answer cache instead of a new
+    # AI call -- same repository version, same mode, same (normalized)
+    # question as one already asked.
+    cached: bool
+
+
+class ChatHistoryResponse(BaseModel):
+    entries: list[ChatHistoryEntry]
 
 
 class RepositorySummaryResponse(BaseModel):

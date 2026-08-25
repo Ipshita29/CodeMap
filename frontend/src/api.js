@@ -31,6 +31,7 @@ async function apiRequest(path, options = {}) {
     throw new ApiError(message, response.status)
   }
 
+  if (response.status === 204) return null
   return response.json()
 }
 
@@ -48,6 +49,14 @@ export function generateRepositorySummary() {
 
 export function askRepositoryQuestion({ question, mode }) {
   return apiRequest('/repository/chat', { method: 'POST', body: { question, mode } })
+}
+
+export function fetchChatHistory() {
+  return apiRequest('/repository/chat/history', { method: 'GET' })
+}
+
+export function clearChatHistory() {
+  return apiRequest('/repository/chat/history', { method: 'DELETE' })
 }
 
 export function fetchCodeIntelligence() {
