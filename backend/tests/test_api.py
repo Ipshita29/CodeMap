@@ -395,3 +395,158 @@ def test_analyze_missing_repository_id_is_422():
     response = client.get("/repository/analyze")
 
     assert response.status_code == 422
+
+
+# =====================================================================
+# Question length limit
+# =====================================================================
+
+
+def test_chat_question_at_max_length_succeeds(imported_repository, stub_ai_complete):
+    question = "x" * settings.ai_max_question_length
+
+    response = client.post(
+        "/repository/chat", json={"repository_id": imported_repository, "question": question, "mode": "beginner"}
+    )
+
+    assert response.status_code == 200
+
+
+def test_chat_question_over_max_length_is_422_with_a_clear_message(imported_repository):
+    question = "x" * (settings.ai_max_question_length + 1)
+
+    response = client.post(
+        "/repository/chat", json={"repository_id": imported_repository, "question": question, "mode": "beginner"}
+    )
+
+    assert response.status_code == 422
+    assert str(settings.ai_max_question_length) in response.text
+    assert "characters or fewer" in response.text
+
+
+# =====================================================================
+# Per-session AI rate limiting -- keyed on repository_id (this
+# architecture's existing session-isolation unit), enforced before any
+# context building or provider call, independent of the answer cache.
+# =====================================================================
+
+
+def test_requests_under_the_rate_limit_all_succeed(imported_repository, stub_ai_complete, monkeypatch):
+    monkeypatch.setattr(settings, "ai_rate_limit", 3)
+
+    for i in range(3):
+        response = client.post(
+            "/repository/chat",
+            json={"repository_id": imported_repository, "question": f"Unique question {i}", "mode": "beginner"},
+        )
+        assert response.status_code == 200
+
+    assert len(stub_ai_complete) == 3
+
+
+def test_request_over_the_rate_limit_is_429_and_never_reaches_the_ai_provider(
+    imported_repository, stub_ai_complete, monkeypatch
+):
+    monkeypatch.setattr(settings, "ai_rate_limit", 3)
+
+    for i in range(3):
+        response = client.post(
+            "/repository/chat",
+            json={"repository_id": imported_repository, "question": f"Unique question {i}", "mode": "beginner"},
+        )
+        assert response.status_code == 200
+
+    over_limit = client.post(
+        "/repository/chat",
+        json={"repository_id": imported_repository, "question": "One question too many", "mode": "beginner"},
+    )
+
+    assert over_limit.status_code == 429
+    # CodeMap's own limit is enforced before any provider call -- the 4th
+    # (rejected) request never reached ai_service.complete.
+    assert len(stub_ai_complete) == 3
+
+
+def test_summary_requests_share_the_same_per_repository_rate_limit_as_chat(
+    imported_repository, stub_ai_complete, monkeypatch
+):
+    monkeypatch.setattr(settings, "ai_rate_limit", 1)
+
+    first = client.post("/repository/summary", params={"repository_id": imported_repository})
+    assert first.status_code == 200  # consumes the session's only slot (2 completions, 1 request)
+
+    second = client.post(
+        "/repository/chat",
+        json={"repository_id": imported_repository, "question": "A brand new question", "mode": "beginner"},
+    )
+
+    assert second.status_code == 429
+
+
+def test_separate_sessions_have_independent_rate_limits(stub_clone, stub_ai_complete, monkeypatch):
+    monkeypatch.setattr(settings, "ai_rate_limit", 2)
+
+    repo_a = client.post("/repository/import", json={"github_url": "https://github.com/octocat/repo-a"}).json()[
+        "repository_name"
+    ]
+    repo_b = client.post("/repository/import", json={"github_url": "https://github.com/octocat/repo-b"}).json()[
+        "repository_name"
+    ]
+
+    # Exhaust session A's limit.
+    for i in range(2):
+        response = client.post(
+            "/repository/chat", json={"repository_id": repo_a, "question": f"A question {i}", "mode": "beginner"}
+        )
+        assert response.status_code == 200
+    over_a = client.post(
+        "/repository/chat", json={"repository_id": repo_a, "question": "A over the limit", "mode": "beginner"}
+    )
+    assert over_a.status_code == 429
+
+    # Session B is a completely independent bucket -- untouched by A's usage.
+    still_ok_b = client.post(
+        "/repository/chat", json={"repository_id": repo_b, "question": "B question", "mode": "beginner"}
+    )
+    assert still_ok_b.status_code == 200
+
+
+def test_cache_hit_does_not_consume_a_rate_limit_slot(imported_repository, stub_ai_complete, monkeypatch):
+    monkeypatch.setattr(settings, "ai_rate_limit", 1)
+    question = "The exact same cacheable question"
+
+    first = client.post(
+        "/repository/chat", json={"repository_id": imported_repository, "question": question, "mode": "beginner"}
+    )
+    assert first.status_code == 200
+    assert first.json()["cached"] is False
+
+    # Re-asking the identical question repeatedly must all be cache hits --
+    # none of them should trip the (already-exhausted, limit=1) rate limit,
+    # because a cache hit is never an AI request.
+    for _ in range(5):
+        response = client.post(
+            "/repository/chat",
+            json={"repository_id": imported_repository, "question": question, "mode": "beginner"},
+        )
+        assert response.status_code == 200
+        assert response.json()["cached"] is True
+
+    assert len(stub_ai_complete) == 1  # only the very first call ever reached the AI
+
+
+# =====================================================================
+# AI concurrency limit -- unrelated non-AI endpoints must stay usable
+# =====================================================================
+
+
+def test_non_ai_endpoint_remains_usable_while_ai_concurrency_is_saturated(imported_repository):
+    held = [ai._ai_concurrency_semaphore.acquire(blocking=False) for _ in range(settings.ai_max_concurrent_requests)]
+    assert all(held), "test setup expected to be able to fully saturate the concurrency semaphore"
+
+    try:
+        response = client.get("/repository/analyze", params={"repository_id": imported_repository})
+        assert response.status_code == 200
+    finally:
+        for _ in held:
+            ai._ai_concurrency_semaphore.release()

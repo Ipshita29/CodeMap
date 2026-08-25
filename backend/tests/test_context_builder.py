@@ -2,6 +2,7 @@ from pathlib import Path
 
 from ai import RepositoryContextBuilder, _extract_keywords, _fuzzy_match
 from analyzer import run_and_store_code_intelligence
+from config import settings
 from repository import RepositoryAnalyzer
 
 
@@ -78,6 +79,45 @@ def test_context_sources_are_always_real_repository_files(tmp_path):
 
     assert context.sources, "expected at least one source for a matched question"
     assert set(context.sources) <= real_paths
+
+
+# =====================================================================
+# AI context size protection -- the limit applies AFTER relevance-based
+# selection (find_relevant_files), never in place of it; see
+# build_context()'s budget loop and its hard-backstop clamp.
+# =====================================================================
+
+
+def test_oversized_context_is_constrained_to_the_configured_budget(tmp_path, monkeypatch):
+    monkeypatch.setattr(settings, "ai_max_context_chars", 500)
+    repo_path = tmp_path
+    padding = "\n".join(f"    # padding line {i}" for i in range(300))
+    (repo_path / "authController.py").write_text(f"def login(email, password):\n{padding}\n    return True\n")
+    (repo_path / "userService.py").write_text(f"def create_user(email):\n{padding}\n    pass\n")
+    day2_result = RepositoryAnalyzer(repo_path).analyze()
+    intelligence = run_and_store_code_intelligence(repo_path, day2_result).to_dict()
+    builder = RepositoryContextBuilder(repo_path, day2_result, intelligence)
+    real_paths = {f["path"] for f in day2_result.files}
+
+    context = builder.build_context("How does login work?")
+
+    # Constrained to the budget...
+    assert len(context.system_context) <= settings.ai_max_context_chars
+    # ...without breaking grounding: whatever made it in is still a real,
+    # relevant repository file, never a fabricated or unrelated one.
+    assert set(context.sources) <= real_paths
+
+
+def test_normal_sized_context_is_unaffected_by_the_budget(tmp_path):
+    # With the default (generous) budget, a small repository's context
+    # should never be truncated at all -- the limit only ever bites when
+    # content genuinely approaches it.
+    builder = _build_context_builder(tmp_path)
+
+    context = builder.build_context("How does login work?")
+
+    assert len(context.system_context) < settings.ai_max_context_chars
+    assert "authController.py" in context.sources
 
 
 def test_large_file_extracts_matching_symbol_only(tmp_path):

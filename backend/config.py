@@ -37,6 +37,15 @@ class Settings(BaseSettings):
     ai_max_chars_per_file: int = 3_000
     ai_max_context_files: int = 8
 
+    # Abuse/cost protection -- see ai.py sections 1 (concurrency) and 4a
+    # (rate limiting). ai_max_context_chars above already doubles as the
+    # context-size protection this group implies; no separate setting for
+    # it.
+    ai_max_question_length: int = 2_000
+    ai_rate_limit: int = 10
+    ai_rate_window_seconds: int = 60
+    ai_max_concurrent_requests: int = 5
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 

@@ -46,6 +46,18 @@ class AIRequestTimeoutError(AIServiceError):
     """Raised when a request to the AI provider times out."""
 
 
+class AIRateLimitExceededError(AIServiceError):
+    """Raised when a session (repository_id) exceeds CodeMap's own AI
+    request rate limit -- CodeMap's enforcement, not the provider's; see
+    ai.py's rate-limiting section. Maps to HTTP 429."""
+
+
+class AIServiceBusyError(AIServiceError):
+    """Raised when the global cap on simultaneous in-flight AI requests is
+    reached and a slot doesn't free up within the short grace wait; see
+    ai.py's AIService.complete(). Maps to HTTP 503."""
+
+
 # -- Validation ----------------------------------------------------------
 
 # Only allow https://github.com/<owner>/<repo>[.git] — this both rejects

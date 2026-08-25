@@ -18,11 +18,16 @@ by api.py before calling in. That keeps the dependency graph one-directional
 import ...` for its impact-explanation prompt) instead of a cycle.
 
 Sections:
-  1. LLM provider client (AIService)
+  1. LLM provider client (AIService) -- also owns the global AI
+     concurrency cap (a threading.Semaphore around the actual provider
+     call; every AI call in the app goes through complete(), so this is
+     the one place that needs to enforce it)
   2. Prompts
   3. Repository context construction (RepositoryContextBuilder)
   4. Answer cache -- keyed on repository.repository_version(), the same
      canonical version identity the snapshot cache uses
+  4a. AI rate limiting -- per-session (per repository_id) request cap,
+      independent of the answer cache and of repository/session cleanup
   5. Pydantic request/response models
   6. Orchestration (what api.py's routes call)
 """
@@ -31,6 +36,7 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -41,7 +47,13 @@ from pydantic import BaseModel, Field, field_validator
 
 from config import settings
 from repository import AnalysisResult, repository_version
-from utils import AIRequestTimeoutError, AIServiceError, AIServiceNotConfiguredError
+from utils import (
+    AIRateLimitExceededError,
+    AIRequestTimeoutError,
+    AIServiceBusyError,
+    AIServiceError,
+    AIServiceNotConfiguredError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -76,13 +88,31 @@ class AIService:
             self._client = OpenAI(
                 api_key=settings.openai_api_key,
                 base_url=settings.openai_base_url or None,
+                # Enforced by the OpenAI SDK's own HTTP client, at the
+                # actual provider-request level -- not a wall-clock timer
+                # wrapped around this method. Translated to
+                # AIRequestTimeoutError -> HTTP 504 below.
                 timeout=settings.openai_timeout_seconds,
             )
         return self._client
 
     def complete(self, system_prompt: str, user_prompt: str) -> str:
+        # Configuration is checked, and fails, before taking a concurrency
+        # slot -- a request that was never going to reach the provider
+        # anyway shouldn't occupy one.
         client = self._get_client()
 
+        # Global concurrency cap: every AI call in the app (Ask CodeMap,
+        # the repository summary's two completions, impact analysis's
+        # optional explanation) funnels through this one method, so gating
+        # it here is sufficient -- no other call site needs to know this
+        # exists. A short bounded wait smooths over a momentary burst
+        # instead of instantly rejecting; a genuinely saturated backend
+        # still fails fast rather than queuing indefinitely.
+        if not _ai_concurrency_semaphore.acquire(timeout=_CONCURRENCY_ACQUIRE_TIMEOUT_SECONDS):
+            raise AIServiceBusyError(
+                "The AI service is currently handling too many requests. Please try again in a moment."
+            )
         try:
             response = client.chat.completions.create(
                 model=settings.openai_model,
@@ -104,6 +134,8 @@ class AIService:
         except APIError as exc:
             logger.warning("AI provider API error: %s", exc)
             raise AIServiceError("The AI service returned an error. Please try again.") from exc
+        finally:
+            _ai_concurrency_semaphore.release()
 
         choice = response.choices[0] if response.choices else None
         content = choice.message.content if choice and choice.message else None
@@ -126,6 +158,15 @@ class AIService:
             logger.warning("AI provider health check failed: %s", exc)
             return "error"
 
+
+# A plain threading.Semaphore, not asyncio.Semaphore -- every route in
+# api.py is a sync `def`, which FastAPI runs in a worker thread pool, so
+# concurrent requests are genuinely concurrent OS threads, not coroutines
+# sharing one event loop. An asyncio.Semaphore isn't safe (or even usable)
+# across threads; threading.Semaphore is the mechanism that actually
+# matches this app's execution model.
+_ai_concurrency_semaphore = threading.Semaphore(settings.ai_max_concurrent_requests)
+_CONCURRENCY_ACQUIRE_TIMEOUT_SECONDS = 2.0
 
 ai_service = AIService()
 
@@ -375,7 +416,20 @@ class RepositoryContextBuilder:
                 sources.append(file_path)
                 used_chars += len(block)
 
-        return BuiltContext(system_context="\n\n".join(sections), sources=sources)
+        system_context = "\n\n".join(sections)
+        # Hard backstop, not the primary mechanism: the loop above already
+        # keeps the total within budget by relevance-ranked truncation
+        # (highest-scoring files first, stopping before the budget is
+        # exceeded -- see find_relevant_files), so this only ever fires if
+        # the fixed repository/code-intelligence overview sections alone
+        # somehow exceeded ai_max_context_chars, which their own internal
+        # slicing (top languages, top folders, top routes/classes) is
+        # designed to prevent. Guarantees the configured limit is never
+        # crossed even so, rather than relying solely on that being true.
+        if len(system_context) > settings.ai_max_context_chars:
+            system_context = system_context[: settings.ai_max_context_chars]
+
+        return BuiltContext(system_context=system_context, sources=sources)
 
     # -- repository-level context -------------------------------------------
 
@@ -628,6 +682,59 @@ def clear_answer_history(repository_path: Path) -> None:
 
 
 # =====================================================================
+# 4a. AI rate limiting -- per-session (per repository_id, the existing
+#     session-isolation unit; see repository.get_repository_path()'s
+#     docstring) sliding-window cap on AI *requests*, enforced before any
+#     context building or provider call.
+#
+#     Deliberately independent of both the answer cache above (a cache hit
+#     never calls this -- it isn't an AI request, see api.py's routes) and
+#     of repository/session cleanup (there is none today; if one is added
+#     later it must stay a separate concern, not triggered by rate-limit
+#     usage -- a chatty session is not a reason to delete its repository).
+#
+#     In-memory, same as the rest of this app's state: a plain dict guarded
+#     by a lock, since FastAPI runs sync routes in a thread pool -- these
+#     ARE genuinely concurrent OS threads, not just coroutines on one event
+#     loop, so the dict needs real thread-safety, not just "single-
+#     threaded async" safety.
+# =====================================================================
+
+_rate_limit_lock = threading.Lock()
+_rate_limit_requests: dict[str, list[float]] = {}  # session_id (repository_id) -> recent request timestamps
+
+
+def enforce_ai_rate_limit(session_id: str) -> None:
+    """Raises AIRateLimitExceededError if `session_id` has already made
+    ai_rate_limit AI requests within the last ai_rate_window_seconds.
+    Records this request's timestamp otherwise. Call this AFTER a cache-hit
+    check has already ruled out a cache hit, and BEFORE building context or
+    calling the provider -- see api.py's chat/summary routes."""
+    now = time.time()
+    window_start = now - settings.ai_rate_window_seconds
+
+    with _rate_limit_lock:
+        # Opportunistic cleanup -- drop any session whose every recorded
+        # timestamp has aged out of the window, so memory doesn't grow
+        # across many repositories imported over a long-running process,
+        # not just within one busy session's own list.
+        for stale_id in [sid for sid, ts in _rate_limit_requests.items() if not any(t > window_start for t in ts)]:
+            del _rate_limit_requests[stale_id]
+
+        recent = [t for t in _rate_limit_requests.get(session_id, []) if t > window_start]
+
+        if len(recent) >= settings.ai_rate_limit:
+            _rate_limit_requests[session_id] = recent
+            raise AIRateLimitExceededError(
+                f"Too many AI requests for this session. The limit is {settings.ai_rate_limit} AI "
+                f"requests per {settings.ai_rate_window_seconds} seconds. Please wait and try again."
+            )
+
+        recent.append(now)
+        _rate_limit_requests[session_id] = recent
+
+
+# =====================================================================
 # 5. Pydantic request/response models
 # =====================================================================
 
@@ -641,10 +748,12 @@ class ChatRequest(BaseModel):
 
     @field_validator("question")
     @classmethod
-    def question_must_not_be_blank(cls, value: str) -> str:
+    def question_must_be_valid(cls, value: str) -> str:
         stripped = value.strip()
         if not stripped:
             raise ValueError("Question must not be empty.")
+        if len(stripped) > settings.ai_max_question_length:
+            raise ValueError(f"Question must be {settings.ai_max_question_length} characters or fewer.")
         return stripped
 
 

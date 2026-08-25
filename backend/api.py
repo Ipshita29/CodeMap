@@ -31,7 +31,9 @@ import ai
 import analyzer
 import repository
 from utils import (
+    AIRateLimitExceededError,
     AIRequestTimeoutError,
+    AIServiceBusyError,
     AIServiceError,
     AIServiceNotConfiguredError,
     InvalidGitHubURLError,
@@ -240,6 +242,10 @@ def _translate_ai_errors(exc: Exception) -> HTTPException:
         return HTTPException(status_code=503, detail=str(exc))
     if isinstance(exc, AIRequestTimeoutError):
         return HTTPException(status_code=504, detail=str(exc))
+    if isinstance(exc, AIRateLimitExceededError):
+        return HTTPException(status_code=429, detail=str(exc))
+    if isinstance(exc, AIServiceBusyError):
+        return HTTPException(status_code=503, detail=str(exc))
     return HTTPException(status_code=502, detail=str(exc))
 
 
@@ -262,6 +268,11 @@ def generate_repository_summary(repository_id: str) -> ai.RepositorySummaryRespo
     repository_path = _resolve_repository(repository_id)
 
     try:
+        # No answer cache exists for summaries (each call regenerates), so
+        # the rate limit applies unconditionally here, before any context
+        # building -- same session bucket /chat draws from (both count
+        # against the one "AI requests for this repository_id" limit).
+        ai.enforce_ai_rate_limit(repository_id)
         day2_result, intelligence = _get_repository_intelligence(repository_path)
         return ai.generate_repository_summary(repository_path, day2_result, intelligence)
     except RepositoryAnalysisError as exc:
@@ -274,14 +285,20 @@ def generate_repository_summary(repository_id: str) -> ai.RepositorySummaryRespo
 def chat_with_repository(payload: ai.ChatRequest) -> ai.ChatResponse:
     repository_path = _resolve_repository(payload.repository_id)
 
-    # Cache check comes before any repository re-analysis or AI call -- a
-    # hit costs nothing beyond a dict lookup and a Git HEAD read, so it
-    # deliberately happens before _get_repository_intelligence.
+    # Cache check comes before any repository re-analysis, rate-limit
+    # check, or AI call -- a hit costs nothing beyond a dict lookup and a
+    # Git HEAD read, and isn't an AI request, so it must never consume a
+    # rate-limit slot or count toward it.
     cached = ai.lookup_answer(repository_path, payload.mode, payload.question)
     if cached is not None:
         return ai.ChatResponse(**cached.__dict__, cached=True)
 
     try:
+        # CodeMap's own limit, enforced before context building or any
+        # provider call -- never dependent on the provider's own rate
+        # limiting (see AIService.complete()'s RateLimitError handling,
+        # which is a separate, provider-side concern).
+        ai.enforce_ai_rate_limit(payload.repository_id)
         day2_result, intelligence = _get_repository_intelligence(repository_path)
         return ai.answer_question(repository_path, payload.question, payload.mode, day2_result, intelligence)
     except RepositoryAnalysisError as exc:
