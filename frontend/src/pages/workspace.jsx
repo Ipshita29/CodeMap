@@ -71,7 +71,7 @@ function Sidebar({ activeSection, onSectionChange, repositoryName }) {
     </aside>
   )
 }
-function ExportMenu({ repositoryAnalysis }) {
+function ExportMenu({ repositoryId, repositoryAnalysis }) {
   const [open, setOpen] = useState(false)
   const containerRef = useRef(null)
   const queryClient = useQueryClient()
@@ -108,7 +108,7 @@ function ExportMenu({ repositoryAnalysis }) {
   async function handleDownloadJson() {
     let graph = null
     try {
-      graph = await fetchRepositoryGraph({})
+      graph = await fetchRepositoryGraph(repositoryId, {})
     } catch {
       graph = null 
     }
@@ -169,7 +169,7 @@ function ExportMenu({ repositoryAnalysis }) {
   )
 }
 
-function TopBar({ repositoryAnalysis, onImportAnother }) {
+function TopBar({ repositoryId, repositoryAnalysis, onImportAnother }) {
   return (
     <header className="workspace-topbar">
       <div>
@@ -177,7 +177,7 @@ function TopBar({ repositoryAnalysis, onImportAnother }) {
         <p className="workspace-topbar-subtitle">Repository analysis</p>
       </div>
       <div className="workspace-topbar-actions">
-        <ExportMenu repositoryAnalysis={repositoryAnalysis} />
+        <ExportMenu repositoryId={repositoryId} repositoryAnalysis={repositoryAnalysis} />
         <button type="button" className="btn btn-outline" onClick={onImportAnother}>
           Import repository
         </button>
@@ -186,12 +186,12 @@ function TopBar({ repositoryAnalysis, onImportAnother }) {
   )
 }
 
-export function WorkspacePage({ onImportAnother }) {
+export function WorkspacePage({ repositoryId, onImportAnother }) {
   const [section, setSection] = useState('overview')
   const [askPrefill, setAskPrefill] = useState(null)
   const { data, isPending, isError, error } = useQuery({
     queryKey: ['repository-analysis'],
-    queryFn: fetchRepositoryAnalysis,
+    queryFn: () => fetchRepositoryAnalysis(repositoryId),
   })
 
   function askAbout(question) {
@@ -232,15 +232,20 @@ export function WorkspacePage({ onImportAnother }) {
     <div className="workspace-shell">
       <Sidebar activeSection={section} onSectionChange={setSection} repositoryName={data.repository_name} />
       <div className="workspace-body">
-        <TopBar repositoryAnalysis={data} onImportAnother={onImportAnother} />
+        <TopBar repositoryId={repositoryId} repositoryAnalysis={data} onImportAnother={onImportAnother} />
         <main className="workspace-main">
           <div className="workspace-content">
             {section === 'overview' && (
-              <RepositoryOverview data={data} onExploreStructure={() => setSection('architecture')} askPrefill={askPrefill} />
+              <RepositoryOverview
+                repositoryId={repositoryId}
+                data={data}
+                onExploreStructure={() => setSection('architecture')}
+                askPrefill={askPrefill}
+              />
             )}
-            {section === 'architecture' && <ArchitectureWorkspace onAskAbout={askAbout} />}
-            {section === 'git' && <GitHistory onAskAbout={askAbout} />}
-            {section === 'health' && <HealthDashboard onAskAbout={askAbout} />}
+            {section === 'architecture' && <ArchitectureWorkspace repositoryId={repositoryId} onAskAbout={askAbout} />}
+            {section === 'git' && <GitHistory repositoryId={repositoryId} onAskAbout={askAbout} />}
+            {section === 'health' && <HealthDashboard repositoryId={repositoryId} onAskAbout={askAbout} />}
           </div>
         </main>
       </div>

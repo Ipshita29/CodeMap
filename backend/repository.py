@@ -656,17 +656,26 @@ class GitService:
 
         return target_path
 
-    def get_latest_cloned_repository(self) -> Path:
-        """Return the most recently cloned repository's path, by mtime.
+    def get_repository_path(self, repository_id: str) -> Path:
+        """Resolves an explicit repository_id -- the `repository_name` a
+        client already received from POST /repository/import -- to its
+        cloned path on disk.
 
-        There's no persistence layer yet, so "most recent" is derived from
-        the filesystem itself rather than in-memory/session state — that
-        keeps it correct across server restarts and multiple workers.
+        This is the ONLY way any route identifies "which repository" a
+        request is about. It deliberately replaces an earlier
+        get_latest_cloned_repository() that picked "whichever directory has
+        the newest mtime" -- convenient for a single local user, but wrong
+        under any concurrent use: two imports in flight at once meant one
+        client's repository could resolve to a different client's data.
+        Every route now requires the caller to say explicitly which
+        repository it means.
         """
-        candidates = [entry for entry in self.base_dir.iterdir() if entry.is_dir()]
-        if not candidates:
-            raise NoRepositoryImportedError("No repository has been imported yet.")
-        return max(candidates, key=lambda entry: entry.stat().st_mtime)
+        candidate = (self.base_dir / repository_id).resolve()
+        if self.base_dir not in candidate.parents or not candidate.is_dir():
+            raise NoRepositoryImportedError(
+                f"No imported repository found for '{repository_id}'. Import it first via POST /repository/import."
+            )
+        return candidate
 
 
 git_clone_service = GitService()
@@ -977,32 +986,28 @@ class GitSummaryResponse(BaseModel):
 
 
 # =====================================================================
-# 11. Git service-layer functions -- orchestrate GitAnalyzer against
-#     whichever repository was most recently cloned.
+# 11. Git service-layer functions -- orchestrate GitAnalyzer against a
+#     caller-specified repository (see get_repository_path() above; the
+#     caller is api.py, which resolves repository_id to a Path once).
 # =====================================================================
 
 
-def _git_analyzer_for_latest_repo() -> GitAnalyzer:
-    repository_path = git_clone_service.get_latest_cloned_repository()
-    return GitAnalyzer(repository_path)
-
-
-def get_commit_history(limit: int) -> GitHistoryResponse:
-    analyzer = _git_analyzer_for_latest_repo()
+def get_commit_history(repository_path: Path, limit: int) -> GitHistoryResponse:
+    analyzer = GitAnalyzer(repository_path)
     commits, truncated = analyzer.history(limit)
     return GitHistoryResponse(commits=commits, truncated=truncated, has_git_history=analyzer.available)
 
 
-def get_file_history(file_path: str) -> FileHistoryResponse:
-    analyzer = _git_analyzer_for_latest_repo()
+def get_file_history(repository_path: Path, file_path: str) -> FileHistoryResponse:
+    analyzer = GitAnalyzer(repository_path)
     commits, truncated = analyzer.file_history(file_path)
     return FileHistoryResponse(
         file=file_path, commits=commits, truncated=truncated, has_git_history=analyzer.available
     )
 
 
-def get_git_summary() -> GitSummaryResponse:
-    analyzer = _git_analyzer_for_latest_repo()
+def get_git_summary(repository_path: Path) -> GitSummaryResponse:
+    analyzer = GitAnalyzer(repository_path)
     timeline, _ = analyzer.history(15)
     repository_contributors, contributors_truncated = analyzer.repository_contributors()
     return GitSummaryResponse(

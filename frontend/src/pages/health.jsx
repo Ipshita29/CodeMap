@@ -14,10 +14,10 @@ function healthLabel(score) {
   return 'Critical'
 }
 
-export function HealthDashboard({ onAskAbout }) {
+export function HealthDashboard({ repositoryId, onAskAbout }) {
   const { data, isPending, isError, error } = useQuery({
     queryKey: ['repository-health'],
-    queryFn: fetchRepositoryHealth,
+    queryFn: () => fetchRepositoryHealth(repositoryId),
     retry: false,
   })
 

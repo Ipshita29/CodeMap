@@ -35,62 +35,84 @@ async function apiRequest(path, options = {}) {
   return response.json()
 }
 
+// Every function below except importRepository takes an explicit
+// `repositoryId` as its first argument -- the `repository_name` returned by
+// importRepository -- and sends it to the backend on every request. The
+// backend resolves "which repository" strictly from this value; there is no
+// server-side notion of "the current repository" to fall back on, so a
+// stale or missing id fails loudly (404) rather than silently resolving to
+// someone else's imported repository.
+
 export function importRepository(payload) {
   return apiRequest('/repository/import', { method: 'POST', body: payload })
 }
 
-export function fetchRepositoryAnalysis() {
-  return apiRequest('/repository/analyze', { method: 'GET' })
+export function fetchRepositoryAnalysis(repositoryId) {
+  return apiRequest(`/repository/analyze?repository_id=${encodeURIComponent(repositoryId)}`, { method: 'GET' })
 }
 
-export function generateRepositorySummary() {
-  return apiRequest('/repository/summary', { method: 'POST' })
+export function generateRepositorySummary(repositoryId) {
+  return apiRequest(`/repository/summary?repository_id=${encodeURIComponent(repositoryId)}`, { method: 'POST' })
 }
 
-export function askRepositoryQuestion({ question, mode }) {
-  return apiRequest('/repository/chat', { method: 'POST', body: { question, mode } })
+export function askRepositoryQuestion(repositoryId, { question, mode }) {
+  return apiRequest('/repository/chat', {
+    method: 'POST',
+    body: { repository_id: repositoryId, question, mode },
+  })
 }
 
-export function fetchChatHistory() {
-  return apiRequest('/repository/chat/history', { method: 'GET' })
+export function fetchChatHistory(repositoryId) {
+  return apiRequest(`/repository/chat/history?repository_id=${encodeURIComponent(repositoryId)}`, { method: 'GET' })
 }
 
-export function clearChatHistory() {
-  return apiRequest('/repository/chat/history', { method: 'DELETE' })
+export function clearChatHistory(repositoryId) {
+  return apiRequest(`/repository/chat/history?repository_id=${encodeURIComponent(repositoryId)}`, {
+    method: 'DELETE',
+  })
 }
 
-export function fetchCodeIntelligence() {
-  return apiRequest('/repository/code-intelligence', { method: 'GET' })
+export function fetchCodeIntelligence(repositoryId) {
+  return apiRequest(`/repository/code-intelligence?repository_id=${encodeURIComponent(repositoryId)}`, {
+    method: 'GET',
+  })
 }
 
-export function fetchRepositoryTree() {
-  return apiRequest('/repository/tree', { method: 'GET' })
+export function fetchRepositoryTree(repositoryId) {
+  return apiRequest(`/repository/tree?repository_id=${encodeURIComponent(repositoryId)}`, { method: 'GET' })
 }
 
-export function fetchRepositoryGraph({ focus } = {}) {
-  const query = focus ? `?focus=${encodeURIComponent(focus)}` : ''
-  return apiRequest(`/repository/graph${query}`, { method: 'GET' })
+export function fetchRepositoryGraph(repositoryId, { focus } = {}) {
+  const query = focus ? `&focus=${encodeURIComponent(focus)}` : ''
+  return apiRequest(`/repository/graph?repository_id=${encodeURIComponent(repositoryId)}${query}`, {
+    method: 'GET',
+  })
 }
 
-export function analyzeChangeImpact(payload) {
-  return apiRequest('/repository/impact', { method: 'POST', body: payload })
+export function analyzeChangeImpact(repositoryId, payload) {
+  return apiRequest('/repository/impact', { method: 'POST', body: { repository_id: repositoryId, ...payload } })
 }
 
-export function fetchGitSummary() {
-  return apiRequest('/repository/git/summary', { method: 'GET' })
+export function fetchGitSummary(repositoryId) {
+  return apiRequest(`/repository/git/summary?repository_id=${encodeURIComponent(repositoryId)}`, { method: 'GET' })
 }
 
-export function fetchGitHistory({ limit } = {}) {
-  const query = limit ? `?limit=${encodeURIComponent(limit)}` : ''
-  return apiRequest(`/repository/git/history${query}`, { method: 'GET' })
+export function fetchGitHistory(repositoryId, { limit } = {}) {
+  const query = limit ? `&limit=${encodeURIComponent(limit)}` : ''
+  return apiRequest(`/repository/git/history?repository_id=${encodeURIComponent(repositoryId)}${query}`, {
+    method: 'GET',
+  })
 }
 
-export function fetchFileGitHistory(path) {
-  return apiRequest(`/repository/git/file-history?path=${encodeURIComponent(path)}`, { method: 'GET' })
+export function fetchFileGitHistory(repositoryId, path) {
+  return apiRequest(
+    `/repository/git/file-history?repository_id=${encodeURIComponent(repositoryId)}&path=${encodeURIComponent(path)}`,
+    { method: 'GET' },
+  )
 }
 
-export function fetchRepositoryHealth() {
-  return apiRequest('/repository/health', { method: 'GET' })
+export function fetchRepositoryHealth(repositoryId) {
+  return apiRequest(`/repository/health?repository_id=${encodeURIComponent(repositoryId)}`, { method: 'GET' })
 }
 
 export async function exportPdf({ title, markdown }) {

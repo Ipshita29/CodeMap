@@ -413,13 +413,17 @@ function AskCommandHistory({ entries, activeEntry, onSelect, onClear, isClearing
 // one just swaps `activeEntry` to already-fetched data (no request, no
 // regeneration); the backend's own answer cache is what makes re-asking an
 // existing question instant too (see app/ai/answer_cache.py).
-function AskCodeMapPanel({ data, prefill, sectionRef }) {
+function AskCodeMapPanel({ repositoryId, data, prefill, sectionRef }) {
   const [question, setQuestion] = useState('')
   const [activeEntry, setActiveEntry] = useState(null)
   const [expanded, setExpanded] = useState(false)
-  const chat = useMutation({ mutationFn: askRepositoryQuestion })
-  const history = useQuery({ queryKey: ['chat-history'], queryFn: fetchChatHistory, retry: false })
-  const clearHistory = useMutation({ mutationFn: clearChatHistory })
+  const chat = useMutation({ mutationFn: (vars) => askRepositoryQuestion(repositoryId, vars) })
+  const history = useQuery({
+    queryKey: ['chat-history'],
+    queryFn: () => fetchChatHistory(repositoryId),
+    retry: false,
+  })
+  const clearHistory = useMutation({ mutationFn: () => clearChatHistory(repositoryId) })
   const queryClient = useQueryClient()
   const inputRef = useRef(null)
 
@@ -688,7 +692,7 @@ function RepositoryBriefDrawer({ open, onClose, repositoryName, summary, summary
   )
 }
 
-export function RepositoryOverview({ data, onExploreStructure, askPrefill }) {
+export function RepositoryOverview({ repositoryId, data, onExploreStructure, askPrefill }) {
   const [summaryMode, setSummaryMode] = useState('beginner')
   const [focusedCard, setFocusedCard] = useState('tech')
   const [briefOpen, setBriefOpen] = useState(false)
@@ -709,12 +713,16 @@ export function RepositoryOverview({ data, onExploreStructure, askPrefill }) {
   // viewing Overview, and no percentage/stage is faked while it's pending.
   const summary = useQuery({
     queryKey: ['repository-summary'],
-    queryFn: generateRepositorySummary,
+    queryFn: () => generateRepositorySummary(repositoryId),
     retry: false,
     staleTime: Infinity,
     enabled: false,
   })
-  const gitSummary = useQuery({ queryKey: ['git-summary'], queryFn: fetchGitSummary, retry: false })
+  const gitSummary = useQuery({
+    queryKey: ['git-summary'],
+    queryFn: () => fetchGitSummary(repositoryId),
+    retry: false,
+  })
 
   // Opens the drawer and, the first time, kicks off the same on-demand
   // generation the old inline "Generate Summary" button used -- once
@@ -742,7 +750,7 @@ export function RepositoryOverview({ data, onExploreStructure, askPrefill }) {
         <p className="card-subtitle">Repository analysis</p>
       </section>
 
-      <AskCodeMapPanel data={data} prefill={askPrefill} sectionRef={askSectionRef} />
+      <AskCodeMapPanel repositoryId={repositoryId} data={data} prefill={askPrefill} sectionRef={askSectionRef} />
 
       <div className="metrics-row">
         <span>

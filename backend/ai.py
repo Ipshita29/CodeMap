@@ -619,6 +619,7 @@ ChatMode = Literal["beginner", "developer"]
 
 
 class ChatRequest(BaseModel):
+    repository_id: str
     question: str = Field(..., min_length=1)
     mode: ChatMode = "beginner"
 

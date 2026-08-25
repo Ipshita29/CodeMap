@@ -122,11 +122,11 @@ function DetailsSection({ title, items, render, emptyLabel = 'None' }) {
 
 const IMPACT_LABELS = { target: 'Selected file', direct: 'Direct dependent', indirect: 'Indirect dependent' }
 
-function GitHistorySection({ path }) {
+function GitHistorySection({ repositoryId, path }) {
   const [expanded, setExpanded] = useState(false)
   const { data, isPending, isError, error, refetch } = useQuery({
     queryKey: ['file-git-history', path],
-    queryFn: () => fetchFileGitHistory(path),
+    queryFn: () => fetchFileGitHistory(repositoryId, path),
     enabled: false,
     retry: false,
   })
@@ -171,7 +171,7 @@ function GitHistorySection({ path }) {
   )
 }
 
-function FileInspector({ node, intelligence, onAskAbout }) {
+function FileInspector({ repositoryId, node, intelligence, onAskAbout }) {
   const detailsPath = node?.type === 'file' ? node.data.path : null
   const details = useMemo(() => computeFileDetails(detailsPath, intelligence), [detailsPath, intelligence])
 
@@ -229,7 +229,7 @@ function FileInspector({ node, intelligence, onAskAbout }) {
         </>
       )}
 
-      <GitHistorySection key={node.data.path} path={node.data.path} />
+      <GitHistorySection key={node.data.path} repositoryId={repositoryId} path={node.data.path} />
 
       <button type="button" className="btn btn-outline btn-block mt-6" onClick={() => onAskAbout(node.data.path)}>
         Explain this file
@@ -238,7 +238,7 @@ function FileInspector({ node, intelligence, onAskAbout }) {
   )
 }
 
-export function ArchitectureWorkspace({ onAskAbout }) {
+export function ArchitectureWorkspace({ repositoryId, onAskAbout }) {
   const [mode, setMode] = useState('architecture')
   const [focus, setFocus] = useState(null)
   const [search, setSearch] = useState('')
@@ -251,26 +251,29 @@ export function ArchitectureWorkspace({ onAskAbout }) {
 
   const graphQuery = useQuery({
     queryKey: ['repository-graph', focus],
-    queryFn: () => fetchRepositoryGraph({ focus }),
+    queryFn: () => fetchRepositoryGraph(repositoryId, { focus }),
   })
 
   // The canonical repository tree (every real file/folder, from the same
   // snapshot Overview's file/folder counts come from) -- independent of the
   // relationship graph, which only ever covers files with a parseable
   // import/call relationship. This is what the "Files" sidebar renders.
-  const treeQuery = useQuery({ queryKey: ['repository-tree'], queryFn: fetchRepositoryTree })
+  const treeQuery = useQuery({
+    queryKey: ['repository-tree'],
+    queryFn: () => fetchRepositoryTree(repositoryId),
+  })
 
   // Only fetch once the graph call has succeeded: /repository/graph builds and
   // stores code intelligence on demand, so this is guaranteed to exist by then
   // instead of racing a second on-demand build.
   const intelligenceQuery = useQuery({
     queryKey: ['code-intelligence'],
-    queryFn: fetchCodeIntelligence,
+    queryFn: () => fetchCodeIntelligence(repositoryId),
     retry: false,
     enabled: graphQuery.isSuccess,
   })
 
-  const impact = useMutation({ mutationFn: analyzeChangeImpact })
+  const impact = useMutation({ mutationFn: (vars) => analyzeChangeImpact(repositoryId, vars) })
 
   function handleModeChange(nextMode) {
     setMode(nextMode)
@@ -522,7 +525,12 @@ export function ArchitectureWorkspace({ onAskAbout }) {
               centerRequest={centerRequest}
             />
 
-            <FileInspector node={selectedNode} intelligence={intelligenceQuery.data} onAskAbout={handleAskAboutFile} />
+            <FileInspector
+              repositoryId={repositoryId}
+              node={selectedNode}
+              intelligence={intelligenceQuery.data}
+              onAskAbout={handleAskAboutFile}
+            />
           </div>
         </>
       )}

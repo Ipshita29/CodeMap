@@ -81,7 +81,7 @@ from tree_sitter import Language, Node, Parser
 
 from ai import IMPACT_EXPLANATION_PROMPT, ai_service
 from config import settings
-from repository import AnalysisResult, get_repository_snapshot, git_clone_service
+from repository import AnalysisResult, get_repository_snapshot
 from utils import AIRequestTimeoutError, AIServiceError, AIServiceNotConfiguredError
 
 logger = logging.getLogger(__name__)
@@ -1929,12 +1929,15 @@ class GraphBuilder:
         return [GraphNode(id=eid, type="external", data=GraphNodeData(label=label)) for eid, label in seen.items()]
 
 
-def build_repository_graph(focus: str | None = None) -> GraphResponse:
+def build_repository_graph(repository_path: Path, focus: str | None = None) -> GraphResponse:
     """Builds the repository graph from the existing Day 2/3 analysis --
     reuses the cached canonical snapshot and stored Day 3 code intelligence
     if it's already been computed, exactly like the AI endpoints do, so
-    visiting the graph doesn't require a separate manual analysis step."""
-    repository_path = git_clone_service.get_latest_cloned_repository()
+    visiting the graph doesn't require a separate manual analysis step.
+
+    `repository_path` is resolved by the caller (api.py, from an explicit
+    repository_id) -- this never guesses "whichever repository is current"
+    itself."""
     day2_result = get_repository_snapshot(repository_path)
     intelligence = get_or_build_code_intelligence(repository_path, day2_result)
     builder = GraphBuilder(day2_result.files, intelligence, settings.graph_max_file_nodes)
@@ -2146,8 +2149,7 @@ class ImpactAnalyzer:
         return RiskEstimate(level=level, score=score)
 
 
-def analyze_change_impact(file: str) -> ImpactResponse:
-    repository_path = git_clone_service.get_latest_cloned_repository()
+def analyze_change_impact(repository_path: Path, file: str) -> ImpactResponse:
     day2_result = get_repository_snapshot(repository_path)
     intelligence = get_or_build_code_intelligence(repository_path, day2_result)
     index = RelationshipIndex(intelligence)
@@ -2671,8 +2673,7 @@ class HealthAnalyzer:
         return 100, []
 
 
-def analyze_repository_health() -> HealthResponse:
-    repository_path = git_clone_service.get_latest_cloned_repository()
+def analyze_repository_health(repository_path: Path) -> HealthResponse:
     day2_result = get_repository_snapshot(repository_path)
     intelligence = get_or_build_code_intelligence(repository_path, day2_result)
     index = RelationshipIndex(intelligence)
@@ -2854,6 +2855,7 @@ class RiskEstimate(BaseModel):
 
 
 class ImpactRequest(BaseModel):
+    repository_id: str
     file: str
 
 

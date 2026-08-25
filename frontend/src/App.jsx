@@ -31,7 +31,7 @@ function App() {
       {view === 'analyzing' && (
         <AnalyzingPage repositoryName={repositoryName} onReady={() => setView('workspace')} onBack={handleImportAnother} />
       )}
-      {view === 'workspace' && <WorkspacePage onImportAnother={handleImportAnother} />}
+      {view === 'workspace' && <WorkspacePage repositoryId={repositoryName} onImportAnother={handleImportAnother} />}
       <Sonner
         theme="dark"
         position="top-right"

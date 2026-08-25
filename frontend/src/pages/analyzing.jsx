@@ -43,7 +43,7 @@ function AnalysisProgress({ repositoryName, fileCount, indexed }) {
 export function AnalyzingPage({ repositoryName, onReady, onBack }) {
   const { data, isPending, isError, error } = useQuery({
     queryKey: ['repository-analysis'],
-    queryFn: fetchRepositoryAnalysis,
+    queryFn: () => fetchRepositoryAnalysis(repositoryName),
   })
 
   useEffect(() => {

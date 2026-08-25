@@ -1,10 +1,19 @@
 """api.py -- all HTTP routes.
 
-Every route here does the same three things and nothing more: validate the
-request, call the appropriate repository/analyzer/ai function, and
-translate the result (or a domain exception) into an HTTP response. No
+Every route here does the same four things and nothing more: resolve the
+repository_id the client sent to an actual repository path, validate the
+rest of the request, call the appropriate repository/analyzer/ai function,
+and translate the result (or a domain exception) into an HTTP response. No
 analysis logic lives in this file -- see repository.py, analyzer.py, and
 ai.py for that.
+
+Every route that operates on an imported repository requires an explicit
+`repository_id` (the `repository_name` a client already received from
+POST /repository/import) and resolves it via _resolve_repository() below.
+No route infers "the current repository" any other way -- see
+repository.get_repository_path()'s docstring for why an implicit
+"whichever was imported most recently" resolution is wrong under any
+concurrent use.
 
 Defines routers only -- no FastAPI app instance and no middleware. main.py
 creates the app, registers these routers, and is the only place that
@@ -47,6 +56,18 @@ health_analysis_router = APIRouter(prefix="/repository", tags=["health"])
 export_router = APIRouter(prefix="/repository/export", tags=["export"])
 
 
+def _resolve_repository(repository_id: str) -> Path:
+    """Every repository-scoped route calls this first, with the
+    repository_id the client sent, and uses the Path it returns for
+    everything downstream. Centralizing it also means the 404 mapping (a
+    repository_id that doesn't resolve to an on-disk clone) is written once
+    instead of copy-pasted per route."""
+    try:
+        return repository.git_clone_service.get_repository_path(repository_id)
+    except NoRepositoryImportedError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 # =====================================================================
 # Health check
 # =====================================================================
@@ -74,6 +95,10 @@ def import_repository(payload: repository.RepositoryImportRequest) -> repository
     except RepositoryCloneError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    # repo_name is the repository_id every subsequent call must send back --
+    # it's already unique-per-clone-directory and already safety-checked by
+    # clone_repository()/get_repository_path(), so nothing new is invented
+    # for it here.
     return repository.RepositoryImportResponse(
         repository_name=repo_name,
         clone_path=str(clone_path),
@@ -82,11 +107,8 @@ def import_repository(payload: repository.RepositoryImportRequest) -> repository
 
 
 @repository_router.get("/analyze", response_model=repository.AnalysisResponse)
-def analyze_repository() -> repository.AnalysisResponse:
-    try:
-        repository_path = repository.git_clone_service.get_latest_cloned_repository()
-    except NoRepositoryImportedError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+def analyze_repository(repository_id: str) -> repository.AnalysisResponse:
+    repository_path = _resolve_repository(repository_id)
 
     try:
         result = repository.get_repository_snapshot(repository_path)
@@ -97,16 +119,13 @@ def analyze_repository() -> repository.AnalysisResponse:
 
 
 @repository_router.get("/tree", response_model=repository.RepositoryTreeResponse)
-def get_repository_tree() -> repository.RepositoryTreeResponse:
+def get_repository_tree(repository_id: str) -> repository.RepositoryTreeResponse:
     """The canonical file+folder tree -- the Architecture Repository Map
     renders this directly rather than reconstructing a tree from the
     (necessarily partial: parseable-files-only, node-capped) relationship
     graph. total_files/total_folders here are the exact same numbers
     Overview shows, since both come from the one cached snapshot."""
-    try:
-        repository_path = repository.git_clone_service.get_latest_cloned_repository()
-    except NoRepositoryImportedError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    repository_path = _resolve_repository(repository_id)
 
     try:
         result = repository.get_repository_snapshot(repository_path)
@@ -122,11 +141,8 @@ def get_repository_tree() -> repository.RepositoryTreeResponse:
 
 
 @repository_router.post("/analyze-code", response_model=analyzer.CodeAnalysisSummaryResponse)
-def analyze_code() -> analyzer.CodeAnalysisSummaryResponse:
-    try:
-        repository_path = repository.git_clone_service.get_latest_cloned_repository()
-    except NoRepositoryImportedError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+def analyze_code(repository_id: str) -> analyzer.CodeAnalysisSummaryResponse:
+    repository_path = _resolve_repository(repository_id)
 
     try:
         day2_result = repository.get_repository_snapshot(repository_path)
@@ -152,11 +168,8 @@ def analyze_code() -> analyzer.CodeAnalysisSummaryResponse:
 
 
 @repository_router.get("/code-intelligence", response_model=analyzer.CodeIntelligenceResponse)
-def get_code_intelligence() -> analyzer.CodeIntelligenceResponse:
-    try:
-        repository_path = repository.git_clone_service.get_latest_cloned_repository()
-    except NoRepositoryImportedError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+def get_code_intelligence(repository_id: str) -> analyzer.CodeIntelligenceResponse:
+    repository_path = _resolve_repository(repository_id)
 
     data = analyzer.analysis_storage.load(repository_path.name)
     if data is None:
@@ -168,21 +181,21 @@ def get_code_intelligence() -> analyzer.CodeIntelligenceResponse:
 
 
 @repository_router.get("/graph", response_model=analyzer.GraphResponse)
-def get_repository_graph(focus: str | None = None) -> analyzer.GraphResponse:
+def get_repository_graph(repository_id: str, focus: str | None = None) -> analyzer.GraphResponse:
+    repository_path = _resolve_repository(repository_id)
+
     try:
-        return analyzer.build_repository_graph(focus=focus)
-    except NoRepositoryImportedError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return analyzer.build_repository_graph(repository_path, focus=focus)
     except RepositoryAnalysisError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @repository_router.post("/impact", response_model=analyzer.ImpactResponse)
 def get_change_impact(payload: analyzer.ImpactRequest) -> analyzer.ImpactResponse:
+    repository_path = _resolve_repository(payload.repository_id)
+
     try:
-        return analyzer.analyze_change_impact(payload.file)
-    except NoRepositoryImportedError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return analyzer.analyze_change_impact(repository_path, payload.file)
     except RepositoryAnalysisError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except analyzer.ImpactAnalyzerError as exc:
@@ -217,11 +230,8 @@ def _get_repository_intelligence(repository_path: Path) -> tuple[repository.Anal
 
 
 @ai_router.post("/summary", response_model=ai.RepositorySummaryResponse)
-def generate_repository_summary() -> ai.RepositorySummaryResponse:
-    try:
-        repository_path = repository.git_clone_service.get_latest_cloned_repository()
-    except NoRepositoryImportedError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+def generate_repository_summary(repository_id: str) -> ai.RepositorySummaryResponse:
+    repository_path = _resolve_repository(repository_id)
 
     try:
         day2_result, intelligence = _get_repository_intelligence(repository_path)
@@ -234,10 +244,7 @@ def generate_repository_summary() -> ai.RepositorySummaryResponse:
 
 @ai_router.post("/chat", response_model=ai.ChatResponse)
 def chat_with_repository(payload: ai.ChatRequest) -> ai.ChatResponse:
-    try:
-        repository_path = repository.git_clone_service.get_latest_cloned_repository()
-    except NoRepositoryImportedError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    repository_path = _resolve_repository(payload.repository_id)
 
     # Cache check comes before any repository re-analysis or AI call -- a
     # hit costs nothing beyond a dict lookup and a Git HEAD read, so it
@@ -256,22 +263,14 @@ def chat_with_repository(payload: ai.ChatRequest) -> ai.ChatResponse:
 
 
 @ai_router.get("/chat/history", response_model=ai.ChatHistoryResponse)
-def get_chat_history() -> ai.ChatHistoryResponse:
-    try:
-        repository_path = repository.git_clone_service.get_latest_cloned_repository()
-    except NoRepositoryImportedError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-
+def get_chat_history(repository_id: str) -> ai.ChatHistoryResponse:
+    repository_path = _resolve_repository(repository_id)
     return ai.get_chat_history(repository_path)
 
 
 @ai_router.delete("/chat/history", status_code=204)
-def clear_chat_history() -> None:
-    try:
-        repository_path = repository.git_clone_service.get_latest_cloned_repository()
-    except NoRepositoryImportedError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-
+def clear_chat_history(repository_id: str) -> None:
+    repository_path = _resolve_repository(repository_id)
     ai.clear_answer_history(repository_path)
 
 
@@ -281,27 +280,21 @@ def clear_chat_history() -> None:
 
 
 @git_router.get("/summary", response_model=repository.GitSummaryResponse)
-def git_summary() -> repository.GitSummaryResponse:
-    try:
-        return repository.get_git_summary()
-    except NoRepositoryImportedError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+def git_summary(repository_id: str) -> repository.GitSummaryResponse:
+    repository_path = _resolve_repository(repository_id)
+    return repository.get_git_summary(repository_path)
 
 
 @git_router.get("/history", response_model=repository.GitHistoryResponse)
-def git_history(limit: int = 30) -> repository.GitHistoryResponse:
-    try:
-        return repository.get_commit_history(limit)
-    except NoRepositoryImportedError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+def git_history(repository_id: str, limit: int = 30) -> repository.GitHistoryResponse:
+    repository_path = _resolve_repository(repository_id)
+    return repository.get_commit_history(repository_path, limit)
 
 
 @git_router.get("/file-history", response_model=repository.FileHistoryResponse)
-def git_file_history(path: str) -> repository.FileHistoryResponse:
-    try:
-        return repository.get_file_history(path)
-    except NoRepositoryImportedError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+def git_file_history(repository_id: str, path: str) -> repository.FileHistoryResponse:
+    repository_path = _resolve_repository(repository_id)
+    return repository.get_file_history(repository_path, path)
 
 
 # =====================================================================
@@ -310,11 +303,11 @@ def git_file_history(path: str) -> repository.FileHistoryResponse:
 
 
 @health_analysis_router.get("/health", response_model=analyzer.HealthResponse)
-def get_repository_health() -> analyzer.HealthResponse:
+def get_repository_health(repository_id: str) -> analyzer.HealthResponse:
+    repository_path = _resolve_repository(repository_id)
+
     try:
-        return analyzer.analyze_repository_health()
-    except NoRepositoryImportedError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return analyzer.analyze_repository_health(repository_path)
     except RepositoryAnalysisError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 

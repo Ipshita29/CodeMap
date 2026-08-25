@@ -16,10 +16,10 @@ function formatDate(iso) {
   }
 }
 
-export function GitHistory({ onAskAbout }) {
+export function GitHistory({ repositoryId, onAskAbout }) {
   const { data, isPending, isError, error } = useQuery({
     queryKey: ['git-summary'],
-    queryFn: fetchGitSummary,
+    queryFn: () => fetchGitSummary(repositoryId),
     retry: false,
   })
 
