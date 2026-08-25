@@ -1,15 +1,35 @@
-import { useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Activity, GitBranch, LayoutGrid, MoreHorizontal, Network } from 'lucide-react'
+import { Activity, GitBranch, LayoutGrid, Loader2, MoreHorizontal, Network } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { ApiError, exportPdf, fetchRepositoryAnalysis, fetchRepositoryGraph } from '@/api'
 import { buildJsonExport, buildMarkdownReport, downloadBlob, downloadTextFile } from '@/build-report'
+import { ErrorBoundary } from '@/ErrorBoundary'
+import { useDismissableOverlay } from '@/hooks/useDismissableOverlay'
 import { RepositoryOverview } from './overview'
-import { ArchitectureWorkspace } from './architecture'
-import { GitHistory } from './githistory'
-import { HealthDashboard } from './health'
 import '../css/workspace.css'
+
+// Code-split: Architecture pulls in @xyflow/react + @dagrejs/dagre, and
+// none of the three sections below are needed for the initial Overview
+// experience -- each only downloads once the user actually opens it. The
+// `.then` unwrap is because these pages use named exports (kept as-is
+// everywhere else), while React.lazy requires a default export.
+const ArchitectureWorkspace = lazy(() =>
+  import('./architecture').then((module) => ({ default: module.ArchitectureWorkspace })),
+)
+const GitHistory = lazy(() => import('./githistory').then((module) => ({ default: module.GitHistory })))
+const HealthDashboard = lazy(() => import('./health').then((module) => ({ default: module.HealthDashboard })))
+
+function SectionLoadingFallback() {
+  return (
+    <div className="panel error-boundary-panel">
+      <p className="card-subtitle">
+        <Loader2 className="spinner" size={16} /> Loading…
+      </p>
+    </div>
+  )
+}
 
 function errorMessage(error) {
   return error instanceof ApiError ? error.message : 'Something went wrong. Please try again.'
@@ -76,6 +96,11 @@ function ExportMenu({ repositoryId, repositoryAnalysis }) {
   const containerRef = useRef(null)
   const queryClient = useQueryClient()
   const pdfExport = useMutation({ mutationFn: exportPdf })
+  // Escape, Tab-trapping while open, and returning focus to the trigger on
+  // close -- attached to the panel itself (not containerRef below, which
+  // also wraps the trigger button and exists purely for the separate
+  // click-outside check).
+  const panelRef = useDismissableOverlay(open, () => setOpen(false))
 
   useEffect(() => {
     if (!open) return
@@ -142,25 +167,38 @@ function ExportMenu({ repositoryId, repositoryAnalysis }) {
 
   return (
     <div className="dropdown" ref={containerRef}>
-      <button type="button" className="btn btn-outline" onClick={() => setOpen((prev) => !prev)} aria-label="Export">
+      <button
+        type="button"
+        className="btn btn-outline"
+        onClick={() => setOpen((prev) => !prev)}
+        aria-label="Export"
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
         <MoreHorizontal size={16} />
       </button>
 
       {open && (
-        <div className="dropdown-panel">
+        <div className="dropdown-panel" ref={panelRef} role="menu">
           <p className="dropdown-label">Export</p>
-          <button type="button" className="dropdown-item" onClick={handleDownloadMarkdown}>
+          <button type="button" role="menuitem" className="dropdown-item" onClick={handleDownloadMarkdown}>
             Download Markdown
           </button>
-          <button type="button" className="dropdown-item" onClick={handleDownloadJson}>
+          <button type="button" role="menuitem" className="dropdown-item" onClick={handleDownloadJson}>
             Download JSON
           </button>
-          <button type="button" className="dropdown-item" onClick={handleDownloadPdf} disabled={pdfExport.isPending}>
+          <button
+            type="button"
+            role="menuitem"
+            className="dropdown-item"
+            onClick={handleDownloadPdf}
+            disabled={pdfExport.isPending}
+          >
             {pdfExport.isPending ? 'Generating PDF…' : 'Download PDF'}
           </button>
           <div className="dropdown-divider" />
           <p className="dropdown-label">Share</p>
-          <button type="button" className="dropdown-item" onClick={handleCopyMarkdown}>
+          <button type="button" role="menuitem" className="dropdown-item" onClick={handleCopyMarkdown}>
             Copy Markdown to Clipboard
           </button>
         </div>
@@ -236,16 +274,36 @@ export function WorkspacePage({ repositoryId, onImportAnother }) {
         <main className="workspace-main">
           <div className="workspace-content">
             {section === 'overview' && (
-              <RepositoryOverview
-                repositoryId={repositoryId}
-                data={data}
-                onExploreStructure={() => setSection('architecture')}
-                askPrefill={askPrefill}
-              />
+              <ErrorBoundary label="the Overview section">
+                <RepositoryOverview
+                  repositoryId={repositoryId}
+                  data={data}
+                  onExploreStructure={() => setSection('architecture')}
+                  askPrefill={askPrefill}
+                />
+              </ErrorBoundary>
             )}
-            {section === 'architecture' && <ArchitectureWorkspace repositoryId={repositoryId} onAskAbout={askAbout} />}
-            {section === 'git' && <GitHistory repositoryId={repositoryId} onAskAbout={askAbout} />}
-            {section === 'health' && <HealthDashboard repositoryId={repositoryId} onAskAbout={askAbout} />}
+            {section === 'architecture' && (
+              <ErrorBoundary label="the Architecture section">
+                <Suspense fallback={<SectionLoadingFallback />}>
+                  <ArchitectureWorkspace repositoryId={repositoryId} onAskAbout={askAbout} />
+                </Suspense>
+              </ErrorBoundary>
+            )}
+            {section === 'git' && (
+              <ErrorBoundary label="the Git History section">
+                <Suspense fallback={<SectionLoadingFallback />}>
+                  <GitHistory repositoryId={repositoryId} onAskAbout={askAbout} />
+                </Suspense>
+              </ErrorBoundary>
+            )}
+            {section === 'health' && (
+              <ErrorBoundary label="the Health section">
+                <Suspense fallback={<SectionLoadingFallback />}>
+                  <HealthDashboard repositoryId={repositoryId} onAskAbout={askAbout} />
+                </Suspense>
+              </ErrorBoundary>
+            )}
           </div>
         </main>
       </div>

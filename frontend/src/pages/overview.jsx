@@ -58,6 +58,7 @@ import {
   generateRepositorySummary,
 } from '@/api'
 import { buildSuggestedQuestions, computeLanguageBreakdown, computeTopFolders } from '@/repository-intelligence'
+import { useDismissableOverlay } from '@/hooks/useDismissableOverlay'
 import '../css/overview.css'
 
 function errorMessage(error) {
@@ -307,15 +308,9 @@ function groupHistoryByDay(entries) {
 // state (see AskCodeMapPanel).
 function AskCommandHistory({ entries, activeEntry, onSelect, onClear, isClearing }) {
   const [open, setOpen] = useState(false)
-
-  useEffect(() => {
-    if (!open) return
-    function handleKeydown(event) {
-      if (event.key === 'Escape') setOpen(false)
-    }
-    window.addEventListener('keydown', handleKeydown)
-    return () => window.removeEventListener('keydown', handleKeydown)
-  }, [open])
+  // Escape, Tab-trapping while open, and returning focus to "View all"
+  // on close.
+  const popoverRef = useDismissableOverlay(open, () => setOpen(false))
 
   if (entries.length === 0) return null
 
@@ -356,7 +351,7 @@ function AskCommandHistory({ entries, activeEntry, onSelect, onClear, isClearing
       {open && (
         <>
           <div className="ask-history-popover-backdrop" onClick={() => setOpen(false)} aria-hidden="true" />
-          <div className="ask-history-popover" role="dialog" aria-label="Question history">
+          <div className="ask-history-popover" ref={popoverRef} role="dialog" aria-modal="true" aria-label="Question history">
             <div className="ask-history-popover-header">
               <span className="ask-history-popover-title">
                 <History size={13} />
@@ -624,19 +619,21 @@ function IntelligenceCard({ id, focused, onFocus, headerIcon: HeaderIcon, title,
 // generated text is. Reuses the exact same `summary` query/mutstate the
 // card's button triggers; nothing here re-requests or duplicates it.
 function RepositoryBriefDrawer({ open, onClose, repositoryName, summary, summaryMode, onSummaryModeChange }) {
-  useEffect(() => {
-    if (!open) return
-    function handleKeydown(event) {
-      if (event.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', handleKeydown)
-    return () => window.removeEventListener('keydown', handleKeydown)
-  }, [open, onClose])
+  // Escape, Tab-trapping while open, and returning focus to whatever
+  // opened the drawer on close.
+  const drawerRef = useDismissableOverlay(open, onClose)
 
   return (
     <>
       <div className={`brief-drawer-backdrop${open ? ' brief-drawer-backdrop-open' : ''}`} onClick={onClose} aria-hidden="true" />
-      <aside className={`brief-drawer${open ? ' brief-drawer-open' : ''}`} aria-hidden={!open}>
+      <aside
+        ref={drawerRef}
+        className={`brief-drawer${open ? ' brief-drawer-open' : ''}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`AI Repository Brief for ${repositoryName}`}
+        aria-hidden={!open}
+      >
         <div className="brief-drawer-header">
           <div>
             <p className="brief-drawer-eyebrow">

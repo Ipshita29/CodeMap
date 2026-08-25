@@ -391,6 +391,12 @@
   background: rgba(255, 255, 255, 0.05);
 }
 
+.dropdown-item:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--ring);
+  background: rgba(255, 255, 255, 0.05);
+}
+
 .dropdown-item:disabled {
   opacity: 0.5;
   cursor: not-allowed;

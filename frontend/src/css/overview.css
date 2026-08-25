@@ -357,6 +357,13 @@
   background: var(--background);
 }
 
+.ask-recent-item:focus-visible,
+.ask-history-row:focus-visible {
+  outline: none;
+  color: var(--foreground);
+  box-shadow: inset 0 0 0 2px var(--ring);
+}
+
 /* Selected state reads via a subtle left accent bar + background, not
    accent-colored text -- a past question shouldn't look like a hyperlink. */
 .ask-recent-item-active,
@@ -423,6 +430,12 @@
 .ask-history-popover-close:hover {
   color: var(--foreground);
   background: var(--background);
+}
+
+.ask-history-popover-close:focus-visible {
+  outline: none;
+  color: var(--foreground);
+  box-shadow: 0 0 0 2px var(--ring);
 }
 
 .ask-history-popover-body {
@@ -744,6 +757,13 @@
 .brief-drawer-close:hover {
   color: var(--foreground);
   border-color: var(--foreground);
+}
+
+.brief-drawer-close:focus-visible {
+  outline: none;
+  color: var(--foreground);
+  border-color: var(--ring);
+  box-shadow: 0 0 0 2px var(--ring);
 }
 
 .brief-drawer-toolbar {

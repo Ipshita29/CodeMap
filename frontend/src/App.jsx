@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { Toaster as Sonner } from 'sonner'
 
+import { ErrorBoundary } from '@/ErrorBoundary'
 import { LandingPage } from '@/pages/landing'
 import { AnalyzingPage } from '@/pages/analyzing'
 import { WorkspacePage } from '@/pages/workspace'
@@ -20,18 +21,20 @@ function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {view === 'landing' && (
-        <LandingPage
-          onImported={(name) => {
-            setRepositoryName(name)
-            setView('analyzing')
-          }}
-        />
-      )}
-      {view === 'analyzing' && (
-        <AnalyzingPage repositoryName={repositoryName} onReady={() => setView('workspace')} onBack={handleImportAnother} />
-      )}
-      {view === 'workspace' && <WorkspacePage repositoryId={repositoryName} onImportAnother={handleImportAnother} />}
+      <ErrorBoundary key={view} label="CodeMap">
+        {view === 'landing' && (
+          <LandingPage
+            onImported={(name) => {
+              setRepositoryName(name)
+              setView('analyzing')
+            }}
+          />
+        )}
+        {view === 'analyzing' && (
+          <AnalyzingPage repositoryName={repositoryName} onReady={() => setView('workspace')} onBack={handleImportAnother} />
+        )}
+        {view === 'workspace' && <WorkspacePage repositoryId={repositoryName} onImportAnother={handleImportAnother} />}
+      </ErrorBoundary>
       <Sonner
         theme="dark"
         position="top-right"
