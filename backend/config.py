@@ -19,6 +19,12 @@ class Settings(BaseSettings):
     max_parseable_file_size_bytes: int = 500_000
     graph_max_file_nodes: int = 150
 
+    # Root logger level -- see main.py, which is where this actually gets
+    # applied via logging.basicConfig(). Any standard Python level name
+    # ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL") is valid; an unknown
+    # value falls back to INFO rather than failing startup.
+    log_level: str = "INFO"
+
     openai_api_key: str | None = None
     openai_model: str = "gpt-4o-mini"
     openai_timeout_seconds: float = 45.0

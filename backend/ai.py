@@ -99,6 +99,7 @@ class AIService:
                 "Please check your API key's usage limits and try again."
             ) from exc
         except APITimeoutError as exc:
+            logger.error("AI provider timeout: %s", exc)
             raise AIRequestTimeoutError("The AI request timed out. Please try again.") from exc
         except APIError as exc:
             logger.warning("AI provider API error: %s", exc)
@@ -109,6 +110,21 @@ class AIService:
         if not content:
             raise AIServiceError("The AI service returned an empty response.")
         return content.strip()
+
+    def check_provider_health(self) -> str:
+        """For GET /health. Deliberately makes no network call to the
+        provider -- constructing the client only validates local
+        configuration shape, so a live provider outage or slow response
+        never shows up here (and never has a chance to fail this endpoint).
+        Returns "ok", "not_configured", or "error"; never raises."""
+        try:
+            self._get_client()
+            return "ok"
+        except AIServiceNotConfiguredError:
+            return "not_configured"
+        except Exception as exc:  # noqa: BLE001 - any client-construction failure is a health signal, not a crash
+            logger.warning("AI provider health check failed: %s", exc)
+            return "error"
 
 
 ai_service = AIService()

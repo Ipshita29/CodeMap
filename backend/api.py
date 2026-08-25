@@ -22,8 +22,10 @@ process/application startup happens.
 
 import logging
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Response
+from pydantic import BaseModel
 
 import ai
 import analyzer
@@ -73,9 +75,35 @@ def _resolve_repository(repository_id: str) -> Path:
 # =====================================================================
 
 
-@health_router.get("/health")
-def health_check() -> dict[str, str]:
-    return {"status": "ok"}
+class HealthCheckResponse(BaseModel):
+    status: Literal["healthy", "degraded"]
+    repository_storage: Literal["ok", "error"]
+    ai_provider: Literal["ok", "not_configured", "error"]
+
+
+@health_router.get("/health", response_model=HealthCheckResponse)
+def health_check() -> HealthCheckResponse:
+    """Liveness is implicit in getting any HTTP response at all -- that's
+    what an infra liveness probe actually checks, so this route always
+    returns 200 regardless of what it finds below; it never fails the
+    request itself.
+
+    `status` is closer to a readiness signal: whether this instance's own
+    dependencies look functional. repository_storage failing (disk full,
+    permissions changed, filesystem gone read-only) and ai_provider
+    reporting "error" (a broken local client configuration) are the only
+    things that degrade it -- ai_provider being "not_configured" is a
+    normal, valid deployment state, and neither check ever makes a live
+    network call to an external provider, so a temporary AI provider
+    outage never shows up here at all."""
+    repository_storage = repository.git_clone_service.check_storage_health()
+    ai_provider = ai.ai_service.check_provider_health()
+
+    status: Literal["healthy", "degraded"] = (
+        "degraded" if repository_storage == "error" or ai_provider == "error" else "healthy"
+    )
+
+    return HealthCheckResponse(status=status, repository_storage=repository_storage, ai_provider=ai_provider)
 
 
 # =====================================================================

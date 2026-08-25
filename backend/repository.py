@@ -654,7 +654,22 @@ class GitService:
                 "and the repository is public."
             ) from exc
 
+        logger.info("Cloned repository %s into %s", github_url, target_path)
         return target_path
+
+    def check_storage_health(self) -> str:
+        """Cheap read/write probe against base_dir, for GET /health -- catches
+        a genuinely broken deployment (disk full, permissions changed,
+        filesystem gone read-only under the running process), not a client
+        request problem. Returns "ok" or "error"; never raises."""
+        probe_path = self.base_dir / ".health_check"
+        try:
+            probe_path.write_text("ok", encoding="utf-8")
+            probe_path.unlink()
+            return "ok"
+        except OSError as exc:
+            logger.warning("Repository storage health check failed: %s", exc)
+            return "error"
 
     def get_repository_path(self, repository_id: str) -> Path:
         """Resolves an explicit repository_id -- the `repository_name` a

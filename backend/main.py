@@ -1,9 +1,11 @@
 """main.py -- application startup and backend initialization only.
 
-Creates the FastAPI app, configures CORS, and registers api.py's routers.
-No route logic, no analysis logic -- see api.py / repository.py /
-analyzer.py / ai.py for that.
+Creates the FastAPI app, configures logging and CORS, and registers
+api.py's routers. No route logic, no analysis logic -- see api.py /
+repository.py / analyzer.py / ai.py for that.
 """
+
+import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,6 +19,19 @@ from api import (
     repository_router,
 )
 from config import settings
+
+# The ONE place logging is configured -- every other module just does
+# `logger = logging.getLogger(__name__)` and relies on this. Configuring it
+# here, before the app is constructed, means it's in effect for every log
+# call any route/service makes; module names line up with the file that
+# emitted the line (repository.py's logger is named "repository", etc.),
+# so e.g. "... | ERROR | ai | AI provider timeout ..." tells you exactly
+# which file to look in. Level is controlled by LOG_LEVEL in .env.
+logging.basicConfig(
+    level=getattr(logging, settings.log_level.upper(), logging.INFO),
+    format="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
 
 app = FastAPI(title=settings.app_name)
 
