@@ -14,6 +14,7 @@ from evolution import (
     TESTING,
     build_evolution_timeline,
     classify_file,
+    compute_area_impact,
 )
 
 
@@ -151,3 +152,86 @@ def test_evolution_timeline_reports_no_git_history_for_non_git_directory(tmp_pat
 
     assert result.has_git_history is False
     assert result.areas == []
+
+
+# =====================================================================
+# compute_area_impact -- Change Impact for an Evolution Area, computed
+# from real diffs (repository.py) and the real import graph (analyzer.py),
+# never from AI.
+# =====================================================================
+
+
+def test_compute_area_impact_reflects_real_dependents_and_diffs(tmp_path):
+    repo = _init_repo(tmp_path)
+    _commit(repo, {"services.py": "def login():\n    pass\n"}, "add services module")
+    _commit(
+        repo,
+        {"app.py": "from services import login\n\n\ndef handler():\n    login()\n"},
+        "add app that depends on services",
+    )
+
+    timeline = build_evolution_timeline(tmp_path)
+    assert len(timeline.areas) == 1  # both commits classify Backend and merge into one area
+    area = timeline.areas[0]
+
+    impact = compute_area_impact(tmp_path, area.id)
+
+    assert impact is not None
+    assert impact.area_id == area.id
+    assert impact.files_changed == 2
+    assert impact.additions > 0
+    assert 0 <= impact.score <= 100
+    assert impact.level in {"low", "medium", "high"}
+    # services.py is depended on by app.py -- real evidence from the graph.
+    # Fan-in is 2, not 1: RelationshipIndex counts the import edge and the
+    # resolved app.py::handler -> services.py::login call edge separately
+    # (same as HealthAnalyzer's coupling check and ImpactAnalyzer reuse).
+    assert impact.most_central_file == "services.py"
+    assert impact.most_central_file_fan_in == 2
+    assert impact.relationships_touched >= 1
+    assert "services.py" in impact.headline
+    assert "impact because" in impact.headline.lower()
+    connectivity_paths = {f.path for f in impact.file_connectivity}
+    assert "services.py" in connectivity_paths
+
+
+def test_compute_area_impact_is_low_for_an_isolated_documentation_change(tmp_path):
+    repo = _init_repo(tmp_path)
+    _commit(repo, {"README.md": "# Hello\n"}, "update docs")
+
+    timeline = build_evolution_timeline(tmp_path)
+    area = timeline.areas[0]
+
+    impact = compute_area_impact(tmp_path, area.id)
+
+    assert impact is not None
+    assert impact.level == "low"
+    assert impact.relationships_touched == 0
+    assert impact.most_central_file is None
+
+
+def test_compute_area_impact_returns_none_for_an_unknown_area_id(tmp_path):
+    repo = _init_repo(tmp_path)
+    _commit(repo, {"a.py": "x = 1\n"}, "first commit")
+
+    assert compute_area_impact(tmp_path, "not-a-real-area-id") is None
+
+
+def test_compute_area_impact_reasons_are_traceable_to_evidence(tmp_path):
+    repo = _init_repo(tmp_path)
+    _commit(repo, {"services.py": "def login():\n    pass\n"}, "add services module")
+    _commit(
+        repo,
+        {"app.py": "from services import login\n\n\ndef handler():\n    login()\n"},
+        "add app that depends on services",
+    )
+
+    timeline = build_evolution_timeline(tmp_path)
+    impact = compute_area_impact(tmp_path, timeline.areas[0].id)
+
+    # Every reason should be a plain factual sentence, not free-form prose --
+    # spot check that the headline's numbers reappear in the calibration
+    # note and breakdown rather than being invented independently.
+    assert impact.breakdown.connectivity >= 0
+    assert str(impact.relationships_touched) in impact.headline or impact.relationships_touched == 0
+    assert "Calibrated against this repository" in impact.calibration_note

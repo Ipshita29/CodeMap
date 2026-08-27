@@ -359,6 +359,20 @@ def git_evolution_timeline(repository_id: str, limit: int = 200) -> evolution.Ev
     return evolution.build_evolution_timeline(repository_path, limit)
 
 
+@git_router.get("/evolution/impact", response_model=evolution.AreaImpact)
+def git_evolution_area_impact(repository_id: str, area_id: str, limit: int = 200) -> evolution.AreaImpact:
+    """Change Impact for one Evolution Area -- computed entirely from real
+    Git diffs and the repository's own dependency graph (see evolution.py
+    section 5). Never AI-scored; AI only ever explains the returned facts,
+    via the same Ask CodeMap chat every other "Explain"/"Ask about this"
+    button in this app already uses."""
+    repository_path = _resolve_repository(repository_id)
+    impact = evolution.compute_area_impact(repository_path, area_id, limit)
+    if impact is None:
+        raise HTTPException(status_code=404, detail=f"No evolution area found for id '{area_id}'.")
+    return impact
+
+
 # =====================================================================
 # Repository health
 # =====================================================================

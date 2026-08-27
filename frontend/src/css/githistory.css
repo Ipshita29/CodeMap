@@ -317,6 +317,12 @@
   border-top: 1px solid var(--card-border);
 }
 
+.evolution-evidence-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
 .evolution-evidence-heading {
   margin: 0 0 0.75rem;
   font-size: 0.75rem;
@@ -406,4 +412,61 @@
 
 .evolution-diff-line-hunk {
   color: var(--accent);
+}
+
+/* Change Impact for one Evolution Area (see AreaImpactPanel). */
+
+.area-impact {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+}
+
+.area-impact-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.area-impact-headline {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--foreground);
+  flex: 1;
+  min-width: 14rem;
+}
+
+.area-impact-reasons {
+  margin: 0;
+  padding-left: 1.125rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8125rem;
+  color: var(--foreground);
+}
+
+.area-impact-relationships {
+  margin-top: 0.5rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--card-border);
+}
+
+.impact-connectivity-list {
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.impact-connectivity-list li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  font-size: 0.8125rem;
 }

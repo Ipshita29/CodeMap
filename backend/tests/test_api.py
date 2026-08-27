@@ -185,6 +185,7 @@ def test_import_repository_missing_url_field_is_422(isolated_clone_service):
         ("GET", "/repository/health", {"repository_id": "ghost"}),
         ("GET", "/repository/git/summary", {"repository_id": "ghost"}),
         ("GET", "/repository/git/evolution", {"repository_id": "ghost"}),
+        ("GET", "/repository/git/evolution/impact", {"repository_id": "ghost", "area_id": "x"}),
         ("GET", "/repository/chat/history", {"repository_id": "ghost"}),
     ],
 )
@@ -271,6 +272,32 @@ def test_evolution_timeline_after_import_groups_the_real_commit(imported_reposit
     assert area["commits"][0]["message"] == "initial commit"
     assert "main.py" in area["files"]
     assert "README.md" in area["files"]
+
+
+def test_evolution_area_impact_after_import_returns_a_real_score(imported_repository):
+    timeline = client.get("/repository/git/evolution", params={"repository_id": imported_repository}).json()
+    area_id = timeline["areas"][0]["id"]
+
+    response = client.get(
+        "/repository/git/evolution/impact", params={"repository_id": imported_repository, "area_id": area_id}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["area_id"] == area_id
+    assert body["level"] in {"low", "medium", "high"}
+    assert 0 <= body["score"] <= 100
+    assert "impact because" in body["headline"].lower()
+    assert "Calibrated against this repository" in body["calibration_note"]
+
+
+def test_evolution_area_impact_unknown_area_id_is_404(imported_repository):
+    response = client.get(
+        "/repository/git/evolution/impact",
+        params={"repository_id": imported_repository, "area_id": "not-a-real-area"},
+    )
+
+    assert response.status_code == 404
 
 
 def test_commit_diff_after_import_returns_the_real_patch(imported_repository):

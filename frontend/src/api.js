@@ -126,6 +126,13 @@ export function fetchCommitDiff(repositoryId, hash, path) {
   )
 }
 
+export function fetchAreaImpact(repositoryId, areaId) {
+  return apiRequest(
+    `/repository/git/evolution/impact?repository_id=${encodeURIComponent(repositoryId)}&area_id=${encodeURIComponent(areaId)}`,
+    { method: 'GET' },
+  )
+}
+
 export function fetchRepositoryHealth(repositoryId) {
   return apiRequest(`/repository/health?repository_id=${encodeURIComponent(repositoryId)}`, { method: 'GET' })
 }

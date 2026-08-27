@@ -5,6 +5,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react'
 import {
   analyzeChangeImpact,
   ApiError,
+  fetchAreaImpact,
   fetchCommitDiff,
   fetchEvolutionTimeline,
   fetchGitSummary,
@@ -126,6 +127,92 @@ function CommitEvidenceRow({ repositoryId, commit }) {
   )
 }
 
+// Change Impact for one Evolution Area -- fetched only once the area is
+// opened (queries are enabled: expanded), and entirely backend-computed
+// from real Git diffs + the repository's dependency graph (see
+// backend/evolution.py's compute_area_impact). "Explain this impact" hands
+// the already-computed facts to the existing Ask CodeMap chat, same as
+// every other AI-explain button on this page -- no separate AI scoring.
+function AreaImpactPanel({ repositoryId, areaId, onAskAbout }) {
+  const { data, isPending, isError, error } = useQuery({
+    queryKey: ['area-impact', repositoryId, areaId],
+    queryFn: () => fetchAreaImpact(repositoryId, areaId),
+    retry: false,
+  })
+
+  if (isPending) {
+    return <p className="card-subtitle">Calculating impact from Git history and the dependency graph…</p>
+  }
+  if (isError) {
+    return <p className="card-subtitle">{errorMessage(error)}</p>
+  }
+  if (!data) return null
+
+  return (
+    <div className="area-impact">
+      <div className="area-impact-header">
+        <span className={`risk-badge risk-${data.level}`}>
+          {data.level.toUpperCase()} · {data.score}
+        </span>
+        <p className="area-impact-headline">{data.headline}</p>
+      </div>
+
+      <ul className="area-impact-reasons">
+        {data.reasons.map((reason, index) => (
+          <li key={index}>{reason}</li>
+        ))}
+      </ul>
+
+      <p className="git-stat-note">{data.calibration_note}</p>
+
+      <button
+        type="button"
+        className="link-button mt-3"
+        onClick={() =>
+          onAskAbout(
+            `${data.headline} ${data.reasons.join(' ')} Explain in plain terms what this means for someone ` +
+              `about to review or build on this change, using only the facts above.`,
+          )
+        }
+      >
+        Explain this impact
+      </button>
+
+      {(data.file_connectivity.length > 0 || data.import_changes.files_scanned > 0) && (
+        <div className="area-impact-relationships">
+          <h4 className="evolution-evidence-heading">Dependency relationships touched</h4>
+          {data.file_connectivity.length > 0 ? (
+            <ul className="impact-connectivity-list">
+              {data.file_connectivity.map((file) => (
+                <li key={file.path}>
+                  <span className="hotspot-path">{file.path}</span>
+                  <span className="timeline-meta">
+                    {file.fan_in} dependent{file.fan_in === 1 ? '' : 's'} · {file.fan_out} dependenc
+                    {file.fan_out === 1 ? 'y' : 'ies'}
+                    {file.functions + file.classes > 0
+                      ? ` · ${file.functions} function(s), ${file.classes} class(es)`
+                      : ''}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="card-subtitle">No files in this area appear in the current dependency graph.</p>
+          )}
+          {data.import_changes.files_scanned > 0 && (
+            <p className="git-stat-note">
+              {data.import_changes.added} import statement{data.import_changes.added === 1 ? '' : 's'} added,{' '}
+              {data.import_changes.removed} removed, across {data.import_changes.files_scanned} scanned diff
+              {data.import_changes.files_scanned === 1 ? '' : 's'}
+              {data.import_changes.truncated ? ' (bounded sample)' : ''}.
+            </p>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function EvolutionAreaCard({ repositoryId, area, onAskAbout }) {
   const [expanded, setExpanded] = useState(false)
 
@@ -158,13 +245,20 @@ function EvolutionAreaCard({ repositoryId, area, onAskAbout }) {
       </button>
 
       {expanded && (
-        <div className="evolution-evidence">
-          <h3 className="evolution-evidence-heading">Evidence: commits &amp; files</h3>
-          <ul className="evolution-commit-list">
-            {area.commits.map((commit) => (
-              <CommitEvidenceRow key={commit.hash} repositoryId={repositoryId} commit={commit} />
-            ))}
-          </ul>
+        <div className="evolution-evidence evolution-evidence-sections">
+          <div>
+            <h3 className="evolution-evidence-heading">Change Impact</h3>
+            <AreaImpactPanel repositoryId={repositoryId} areaId={area.id} onAskAbout={onAskAbout} />
+          </div>
+
+          <div>
+            <h3 className="evolution-evidence-heading">Evidence: commits &amp; files</h3>
+            <ul className="evolution-commit-list">
+              {area.commits.map((commit) => (
+                <CommitEvidenceRow key={commit.hash} repositoryId={repositoryId} commit={commit} />
+              ))}
+            </ul>
+          </div>
         </div>
       )}
     </article>
