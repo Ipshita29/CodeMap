@@ -52,7 +52,8 @@ from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from git import GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
+from git import NULL_TREE, GitCommandError, InvalidGitRepositoryError, NoSuchPathError, Repo
+from git.exc import BadName
 from pydantic import BaseModel
 
 from config import settings
@@ -704,6 +705,16 @@ MAX_HISTORY_LIMIT = 200
 MAX_FILE_HISTORY_LIMIT = 30
 MAX_ACTIVITY_COMMITS = 300
 MAX_HOTSPOTS = 10
+# evolution.py's Evolution Timeline groups the same bounded window
+# detailed_history() reads -- capped at MAX_HISTORY_LIMIT for the same
+# reason history() is: per-commit stats computation (commit.stats.files)
+# is real Git-object work, not a free metadata read.
+MAX_DETAILED_HISTORY_LIMIT = MAX_HISTORY_LIMIT
+# commit_diff() returns the *actual* diff text as evidence for one commit
+# (optionally scoped to one file) -- bounded the same way ai.py bounds
+# source-file context (settings.ai_max_chars_per_file), so a single huge
+# generated-file diff can never blow up a response.
+MAX_DIFF_CHARS = 20_000
 # Repository-level contributors need the FULL commit history, not the
 # recent-activity window above -- but only author identity, never
 # `commit.stats` (the expensive per-commit diff computation MAX_ACTIVITY_
@@ -760,6 +771,56 @@ class GitAnalyzer:
         commits = list(self.repo.iter_commits(max_count=limit + 1))
         truncated = len(commits) > limit
         return [self._to_commit_entry(c) for c in commits[:limit]], truncated
+
+    def detailed_history(self, limit: int) -> tuple[list["DetailedCommitEntry"], bool]:
+        """The same bounded commit window as history(), but with each
+        commit's real per-file additions/deletions -- the evidence
+        evolution.py's Evolution Timeline classifies and groups. Never
+        invents anything beyond what commit.stats.files (GitPython's own
+        reading of the commit's tree diff) already reports."""
+        if not self.available:
+            return [], False
+        limit = max(1, min(limit, MAX_DETAILED_HISTORY_LIMIT))
+        commits = list(self.repo.iter_commits(max_count=limit + 1))
+        truncated = len(commits) > limit
+        return [self._to_detailed_commit_entry(c) for c in commits[:limit]], truncated
+
+    def commit_diff(self, commit_hash: str, file_path: str | None = None) -> str | None:
+        """The actual unified diff text introduced by one commit -- the full
+        evidence behind a single Evolution Timeline entry, fetched on demand
+        rather than embedded in every commit (a full patch per commit, times
+        a few hundred commits, is real payload weight the timeline view
+        never needs up front). Scoped to `file_path` when given. Returns
+        None if the commit or the diff for that path doesn't exist."""
+        if not self.available:
+            return None
+        paths = [file_path] if file_path else None
+        try:
+            commit = self.repo.commit(commit_hash)
+            if commit.parents:
+                diffs = commit.parents[0].diff(commit, paths=paths, create_patch=True)
+            else:
+                # A root commit has no parent to diff against -- diffing
+                # against Git's empty tree and reversing (R=True) yields the
+                # same "what this commit introduced" direction as the
+                # parent.diff(commit) branch above.
+                diffs = commit.diff(NULL_TREE, paths=paths, create_patch=True, R=True)
+        except (GitCommandError, ValueError, BadName):
+            # commit_hash resolving to a syntactically valid-looking SHA
+            # that doesn't actually exist in this repository's object store
+            # only surfaces as a ValueError once something touches the
+            # commit object (e.g. .parents), not at repo.commit() itself --
+            # both are caught here rather than split across two try blocks.
+            return None
+
+        patches = [d.diff.decode("utf-8", errors="ignore") for d in diffs if d.diff]
+        if not patches:
+            return None
+
+        text = "\n".join(patches)
+        if len(text) > MAX_DIFF_CHARS:
+            text = text[:MAX_DIFF_CHARS] + "\n... (diff truncated)"
+        return text
 
     def file_history(self, file_path: str) -> tuple[list["FileCommitEntry"], bool]:
         if not self.available:
@@ -867,6 +928,31 @@ class GitAnalyzer:
             files_changed=files_changed,
         )
 
+    def _to_detailed_commit_entry(self, commit) -> "DetailedCommitEntry":
+        try:
+            stats_files = commit.stats.files
+        except (GitCommandError, ValueError):
+            stats_files = {}
+
+        files = [
+            DetailedFileChange(
+                path=path,
+                additions=file_stats.get("insertions", 0),
+                deletions=file_stats.get("deletions", 0),
+            )
+            for path, file_stats in stats_files.items()
+        ]
+        return DetailedCommitEntry(
+            hash=commit.hexsha,
+            short_hash=commit.hexsha[:7],
+            message=_first_line(commit.message),
+            author=commit.author.name or "unknown",
+            date=_iso(commit),
+            additions=sum(f.additions for f in files),
+            deletions=sum(f.deletions for f in files),
+            files=files,
+        )
+
 
 # =====================================================================
 # 10. Pydantic response models
@@ -959,6 +1045,35 @@ class GitHistoryResponse(BaseModel):
     has_git_history: bool
 
 
+class DetailedFileChange(BaseModel):
+    path: str
+    additions: int
+    deletions: int
+
+
+class DetailedCommitEntry(BaseModel):
+    """A commit plus its real per-file additions/deletions -- the raw Git
+    evidence evolution.py classifies and groups into Evolution Areas. Never
+    exposed as a route response on its own; evolution.py consumes it
+    directly."""
+
+    hash: str
+    short_hash: str
+    message: str
+    author: str
+    date: str
+    additions: int
+    deletions: int
+    files: list[DetailedFileChange]
+
+
+class CommitDiffResponse(BaseModel):
+    hash: str
+    file: str | None
+    diff: str | None
+    has_diff: bool
+
+
 class FileCommitEntry(BaseModel):
     short_hash: str
     message: str
@@ -1011,6 +1126,11 @@ def get_commit_history(repository_path: Path, limit: int) -> GitHistoryResponse:
     analyzer = GitAnalyzer(repository_path)
     commits, truncated = analyzer.history(limit)
     return GitHistoryResponse(commits=commits, truncated=truncated, has_git_history=analyzer.available)
+
+
+def get_commit_diff(repository_path: Path, commit_hash: str, file_path: str | None) -> CommitDiffResponse:
+    diff = GitAnalyzer(repository_path).commit_diff(commit_hash, file_path)
+    return CommitDiffResponse(hash=commit_hash, file=file_path, diff=diff, has_diff=diff is not None)
 
 
 def get_file_history(repository_path: Path, file_path: str) -> FileHistoryResponse:

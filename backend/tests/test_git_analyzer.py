@@ -74,3 +74,38 @@ def test_git_analyzer_is_unavailable_for_a_non_git_directory(tmp_path):
     assert analyzer.available is False
     assert analyzer.latest_commit() is None
     assert analyzer.repository_contributors() == (0, False)
+
+
+def test_detailed_history_reports_real_per_file_additions(tmp_path):
+    repo = _init_repo(tmp_path)
+    _commit(repo, "a.py", "x = 1\ny = 2\n", "first commit")
+
+    entries, truncated = GitAnalyzer(tmp_path).detailed_history(limit=10)
+
+    assert truncated is False
+    assert len(entries) == 1
+    assert entries[0].files[0].path == "a.py"
+    assert entries[0].files[0].additions == 2
+    assert entries[0].files[0].deletions == 0
+    assert entries[0].additions == 2
+    assert entries[0].deletions == 0
+
+
+def test_commit_diff_returns_the_real_patch_text(tmp_path):
+    repo = _init_repo(tmp_path)
+    _commit(repo, "a.py", "x = 1\n", "first commit")
+    commit = _commit(repo, "a.py", "x = 1\ny = 2\n", "second commit")
+
+    diff = GitAnalyzer(tmp_path).commit_diff(commit.hexsha, "a.py")
+
+    assert diff is not None
+    assert "y = 2" in diff
+
+
+def test_commit_diff_returns_none_for_an_unknown_commit(tmp_path):
+    repo = _init_repo(tmp_path)
+    _commit(repo, "a.py", "x = 1\n", "first commit")
+
+    diff = GitAnalyzer(tmp_path).commit_diff("0" * 40)
+
+    assert diff is None

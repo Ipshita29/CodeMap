@@ -184,6 +184,7 @@ def test_import_repository_missing_url_field_is_422(isolated_clone_service):
         ("GET", "/repository/tree", {"repository_id": "ghost"}),
         ("GET", "/repository/health", {"repository_id": "ghost"}),
         ("GET", "/repository/git/summary", {"repository_id": "ghost"}),
+        ("GET", "/repository/git/evolution", {"repository_id": "ghost"}),
         ("GET", "/repository/chat/history", {"repository_id": "ghost"}),
     ],
 )
@@ -256,6 +257,34 @@ def test_git_summary_after_import_reflects_the_real_commit(imported_repository):
     assert body["has_git_history"] is True
     assert body["latest_commit"]["message"] == "initial commit"
     assert body["repository_contributors"] == 1
+
+
+def test_evolution_timeline_after_import_groups_the_real_commit(imported_repository):
+    response = client.get("/repository/git/evolution", params={"repository_id": imported_repository})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["has_git_history"] is True
+    assert body["analyzed_commit_count"] == 1
+    assert len(body["areas"]) == 1
+    area = body["areas"][0]
+    assert area["commits"][0]["message"] == "initial commit"
+    assert "main.py" in area["files"]
+    assert "README.md" in area["files"]
+
+
+def test_commit_diff_after_import_returns_the_real_patch(imported_repository):
+    summary = client.get("/repository/git/summary", params={"repository_id": imported_repository}).json()
+    commit_hash = summary["latest_commit"]["hash"]
+
+    response = client.get(
+        "/repository/git/commit-diff", params={"repository_id": imported_repository, "hash": commit_hash, "path": "main.py"}
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["has_diff"] is True
+    assert "handler" in body["diff"]
 
 
 # =====================================================================

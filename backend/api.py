@@ -29,6 +29,7 @@ from pydantic import BaseModel
 
 import ai
 import analyzer
+import evolution
 import repository
 from utils import (
     AIRateLimitExceededError,
@@ -340,6 +341,22 @@ def git_history(repository_id: str, limit: int = 30) -> repository.GitHistoryRes
 def git_file_history(repository_id: str, path: str) -> repository.FileHistoryResponse:
     repository_path = _resolve_repository(repository_id)
     return repository.get_file_history(repository_path, path)
+
+
+@git_router.get("/commit-diff", response_model=repository.CommitDiffResponse)
+def git_commit_diff(repository_id: str, hash: str, path: str | None = None) -> repository.CommitDiffResponse:
+    repository_path = _resolve_repository(repository_id)
+    return repository.get_commit_diff(repository_path, hash, path)
+
+
+@git_router.get("/evolution", response_model=evolution.EvolutionTimelineResponse)
+def git_evolution_timeline(repository_id: str, limit: int = 200) -> evolution.EvolutionTimelineResponse:
+    """The Evolution Timeline: the same commit window git_history() reads,
+    grouped into deterministic Evolution Areas by evolution.py instead of
+    shown as a raw list -- see evolution.py's module docstring for the
+    classify -> group pipeline."""
+    repository_path = _resolve_repository(repository_id)
+    return evolution.build_evolution_timeline(repository_path, limit)
 
 
 # =====================================================================

@@ -111,6 +111,21 @@ export function fetchFileGitHistory(repositoryId, path) {
   )
 }
 
+export function fetchEvolutionTimeline(repositoryId, { limit } = {}) {
+  const query = limit ? `&limit=${encodeURIComponent(limit)}` : ''
+  return apiRequest(`/repository/git/evolution?repository_id=${encodeURIComponent(repositoryId)}${query}`, {
+    method: 'GET',
+  })
+}
+
+export function fetchCommitDiff(repositoryId, hash, path) {
+  const query = path ? `&path=${encodeURIComponent(path)}` : ''
+  return apiRequest(
+    `/repository/git/commit-diff?repository_id=${encodeURIComponent(repositoryId)}&hash=${encodeURIComponent(hash)}${query}`,
+    { method: 'GET' },
+  )
+}
+
 export function fetchRepositoryHealth(repositoryId) {
   return apiRequest(`/repository/health?repository_id=${encodeURIComponent(repositoryId)}`, { method: 'GET' })
 }
