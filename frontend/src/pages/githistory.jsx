@@ -6,9 +6,11 @@ import {
   analyzeChangeImpact,
   ApiError,
   fetchAreaImpact,
+  fetchArchitectureDrift,
   fetchCommitDiff,
   fetchEvolutionTimeline,
   fetchGitSummary,
+  fetchHotspots,
   fetchRepositoryHealth,
 } from '@/api'
 import '../css/githistory.css'
@@ -396,85 +398,284 @@ function ChangeImpactSection({ repositoryId, suggestedFiles, onAskAbout }) {
 }
 
 // =====================================================================
-// Hotspots & Architecture Drift -- most-modified files (Git activity) next
-// to structural drift signals (import cycles, high coupling) already
-// computed by analyzer.py's HealthAnalyzer -- the same data GET
-// /repository/health feeds Health's own score, just filtered to the
-// "architecture" category and shown here in Git History context.
+// Code Hotspots -- change frequency + recency (Git) combined with
+// dependency connectivity (the same graph Change Impact/Evolution Timeline
+// use), scored deterministically by backend/hotspots.py. Every number
+// shown here comes straight off that response; nothing is computed here.
 // =====================================================================
 
-function HotspotsAndDriftSection({ hotspots, health, onAskAbout }) {
+function HotspotRow({ hotspot, onAskAbout }) {
+  const [expanded, setExpanded] = useState(false)
+
+  return (
+    <li className="hotspot-score-row">
+      <button type="button" className="hotspot-score-header" onClick={() => setExpanded((prev) => !prev)}>
+        {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        <span className={`risk-badge risk-${hotspot.level}`}>{hotspot.level.toUpperCase()}</span>
+        <span className="hotspot-path hotspot-score-path">{hotspot.path}</span>
+        <span className="hotspot-score-track">
+          <span className="hotspot-score-fill" style={{ width: `${hotspot.score}%` }} />
+        </span>
+        <span className="hotspot-score-value">{hotspot.score}</span>
+      </button>
+
+      {expanded && (
+        <div className="evolution-evidence">
+          <p className="card-subtitle">{hotspot.why}</p>
+          <ul className="area-impact-reasons mt-3">
+            <li>
+              {hotspot.total_commits} commit(s) total, {hotspot.recent_commits} recent.
+            </li>
+            <li>
+              {hotspot.direct_dependents} direct dependent(s), {hotspot.direct_dependencies} direct dependenc
+              {hotspot.direct_dependencies === 1 ? 'y' : 'ies'} -- {hotspot.relationships} relationship(s) total.
+            </li>
+            {hotspot.functions + hotspot.classes > 0 && (
+              <li>
+                {hotspot.functions} function(s), {hotspot.classes} class(es) currently defined.
+              </li>
+            )}
+            <li>Last modified {formatDate(hotspot.last_modified)}.</li>
+          </ul>
+          <p className="git-stat-note">{hotspot.calibration_note}</p>
+
+          {hotspot.recent_commit_evidence.length > 0 && (
+            <>
+              <h4 className="evolution-evidence-heading mt-6">Evidence: recent commits</h4>
+              <ul className="evolution-commit-list">
+                {hotspot.recent_commit_evidence.map((commit) => (
+                  <li key={commit.short_hash} className="evolution-commit-row">
+                    <span className="commit-hash">{commit.short_hash}</span>
+                    <p className="evolution-commit-message">{commit.message}</p>
+                    <p className="timeline-meta">{formatDate(commit.date)}</p>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+
+          <button
+            type="button"
+            className="link-button mt-3"
+            onClick={() =>
+              onAskAbout(
+                `${hotspot.path} is a ${hotspot.level} hotspot: ${hotspot.why} It has ${hotspot.total_commits} ` +
+                  `total commits and ${hotspot.relationships} dependency relationships. Explain why this matters ` +
+                  `and what to watch for when changing it.`,
+              )
+            }
+          >
+            Ask about this hotspot
+          </button>
+        </div>
+      )}
+    </li>
+  )
+}
+
+function HotspotsSection({ repositoryId, onAskAbout }) {
+  const { data, isPending, isError, error } = useQuery({
+    queryKey: ['hotspots', repositoryId],
+    queryFn: () => fetchHotspots(repositoryId),
+    retry: false,
+  })
+
+  return (
+    <section className="overview-block">
+      <h2>Code Hotspots</h2>
+
+      {isPending && <p className="card-subtitle">Scoring files by change frequency and dependency connectivity…</p>}
+      {isError && <p className="card-subtitle">{errorMessage(error)}</p>}
+      {data && !data.has_git_history && <p className="card-subtitle">No Git history available.</p>}
+
+      {data?.has_git_history &&
+        (data.hotspots.length > 0 ? (
+          <>
+            <p className="git-stat-note">
+              Scored from real change frequency, recent activity, and dependency connectivity -- not commit count
+              alone -- and calibrated against this repository's own averages. Click a file for the evidence behind
+              its score.
+            </p>
+            <ul className="hotspot-score-list">
+              {data.hotspots.map((hotspot) => (
+                <HotspotRow key={hotspot.path} hotspot={hotspot} onAskAbout={onAskAbout} />
+              ))}
+            </ul>
+          </>
+        ) : (
+          <p className="card-subtitle">Not enough change history yet to identify hotspots.</p>
+        ))}
+    </section>
+  )
+}
+
+// =====================================================================
+// Architecture Drift -- the repository's real dependency graph
+// reconstructed at real historical commits (backend/architecture_drift.py)
+// and compared to today. Structural findings from Health's "architecture"
+// category (import cycles, high coupling) are folded in as supporting
+// current-state evidence.
+// =====================================================================
+
+const DRIFT_METRIC_ROWS = [
+  { key: 'module_count', label: 'Modules' },
+  { key: 'relationship_count', label: 'Relationships' },
+  { key: 'avg_connections', label: 'Avg. connections' },
+  { key: 'cross_module_links', label: 'Cross-module links' },
+]
+
+const DRIFT_DELTA_LABELS = {
+  modules: 'modules',
+  relationships: 'dependency relationships',
+  avg_connections: 'avg. connections',
+  cross_module_links: 'cross-module links',
+}
+
+const DRIFT_TREND_LABELS = {
+  more_interconnected: 'Becoming more interconnected',
+  decoupling: 'Growing without added coupling',
+  proportional_growth: 'Proportional growth',
+  stable: 'Stable architecture',
+  not_enough_data: 'Not enough data',
+}
+
+function formatDriftValue(key, value) {
+  return key === 'avg_connections' ? value.toFixed(2) : Math.round(value)
+}
+
+function ArchitectureDriftSection({ repositoryId, health, onAskAbout }) {
+  const { data, isPending, isError, error } = useQuery({
+    queryKey: ['architecture-drift', repositoryId],
+    queryFn: () => fetchArchitectureDrift(repositoryId),
+    retry: false,
+  })
+  const [evidenceOpen, setEvidenceOpen] = useState(false)
   const architectureFindings = (health.data?.findings ?? []).filter((finding) => finding.category === 'architecture')
 
   return (
     <section className="overview-block">
-      <h2>Hotspots &amp; Architecture Drift</h2>
-      <div className="overview-grid">
-        <div>
-          <h3 className="git-subsection-title">Most changed files</h3>
-          {hotspots.length > 0 ? (
-            <ul className="hotspot-list">
-              {hotspots.map((file) => (
-                <li key={file.path} className="hotspot-row">
-                  <span className="hotspot-path">{file.path}</span>
-                  <span className="hotspot-row-actions">
-                    <span className="hotspot-count">{file.commit_count} commits</span>
-                    <button
-                      type="button"
-                      className="link-button"
-                      onClick={() =>
-                        onAskAbout(
-                          `Why has ${file.path} changed so frequently (${file.commit_count} commits), and what should I know about it?`,
-                        )
-                      }
-                    >
-                      Investigate
-                    </button>
-                  </span>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="card-subtitle">No file history available.</p>
-          )}
-        </div>
+      <h2>Architecture Drift</h2>
 
-        <div>
-          <h3 className="git-subsection-title">Architecture drift signals</h3>
-          {health.isPending && <p className="card-subtitle">Checking for structural drift…</p>}
-          {health.isError && <p className="card-subtitle">{errorMessage(health.error)}</p>}
-          {health.data &&
-            (architectureFindings.length > 0 ? (
-              <ul className="finding-list">
-                {architectureFindings.map((finding, index) => (
-                  <li key={index} className={`finding-item finding-item-${finding.severity}`}>
-                    <div className="finding-header">
-                      <span className={`finding-severity finding-severity-${finding.severity}`}>
-                        {finding.severity}
-                      </span>
-                      {finding.path && <span className="finding-path">{finding.path}</span>}
-                    </div>
-                    <p className="finding-reason">{finding.reason}</p>
-                    <p className="finding-recommendation">{finding.recommendation}</p>
-                    <button
-                      type="button"
-                      className="link-button mt-3"
-                      onClick={() =>
-                        onAskAbout(
-                          `Explain this architecture drift finding and how to address it: "${finding.reason}"${finding.path ? ` (${finding.path})` : ''}.`,
-                        )
-                      }
-                    >
-                      Ask about this
-                    </button>
+      {isPending && (
+        <p className="card-subtitle">Reconstructing the dependency graph at earlier points in history…</p>
+      )}
+      {isError && <p className="card-subtitle">{errorMessage(error)}</p>}
+      {data && !data.has_git_history && <p className="card-subtitle">No Git history available.</p>}
+      {data?.has_git_history && !data.has_enough_history && <p className="card-subtitle">{data.interpretation}</p>}
+
+      {data?.has_enough_history && (
+        <>
+          <div className="drift-table-wrap">
+            <table className="drift-table">
+              <thead>
+                <tr>
+                  <th>Metric</th>
+                  {data.checkpoints.map((checkpoint) => (
+                    <th key={checkpoint.commit_hash}>{checkpoint.label}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {DRIFT_METRIC_ROWS.map((row) => (
+                  <tr key={row.key}>
+                    <td>{row.label}</td>
+                    {data.checkpoints.map((checkpoint) => (
+                      <td key={checkpoint.commit_hash}>{formatDriftValue(row.key, checkpoint[row.key])}</td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="drift-deltas">
+            {data.deltas.map((delta) => (
+              <span key={delta.metric} className="drift-delta-chip">
+                {delta.percent_change === null ? (
+                  delta.from_value === 0 && delta.to_value === 0 ? (
+                    <>{DRIFT_DELTA_LABELS[delta.metric]}: not enough data</>
+                  ) : (
+                    <>
+                      {formatDriftValue(delta.metric, delta.from_value)} →{' '}
+                      {formatDriftValue(delta.metric, delta.to_value)} {DRIFT_DELTA_LABELS[delta.metric]}
+                    </>
+                  )
+                ) : (
+                  <>
+                    <span className={delta.percent_change >= 0 ? 'evolution-additions' : 'evolution-deletions'}>
+                      {delta.percent_change >= 0 ? '+' : ''}
+                      {delta.percent_change.toFixed(0)}%
+                    </span>{' '}
+                    {DRIFT_DELTA_LABELS[delta.metric]}
+                  </>
+                )}
+              </span>
+            ))}
+          </div>
+
+          <p className="mt-3">
+            <span className="evolution-area-badge">{DRIFT_TREND_LABELS[data.trend] ?? data.trend}</span>
+          </p>
+          <p className="card-subtitle mt-3">{data.interpretation}</p>
+
+          <button
+            type="button"
+            className="link-button mt-3"
+            onClick={() =>
+              onAskAbout(
+                `${data.interpretation} Explain in plain terms what this trend means for the codebase, using ` +
+                  `only the numbers above.`,
+              )
+            }
+          >
+            Explain this trend
+          </button>
+          <button
+            type="button"
+            className="link-button mt-3 drift-evidence-toggle"
+            onClick={() => setEvidenceOpen((prev) => !prev)}
+          >
+            {evidenceOpen ? 'Hide evidence' : 'Show evidence'}
+          </button>
+
+          {evidenceOpen && (
+            <div className="evolution-evidence">
+              <h3 className="evolution-evidence-heading">Checkpoints used</h3>
+              <ul className="evolution-commit-list">
+                {data.checkpoints.map((checkpoint) => (
+                  <li key={checkpoint.commit_hash} className="evolution-commit-row">
+                    <span className="commit-hash">{checkpoint.commit_short_hash}</span>
+                    <p className="evolution-commit-message">
+                      {checkpoint.label} · {formatDate(checkpoint.commit_date)}
+                    </p>
+                    <p className="timeline-meta">{checkpoint.files_analyzed} file(s) analyzed at this commit</p>
                   </li>
                 ))}
               </ul>
-            ) : (
-              <p className="card-subtitle">No structural drift detected (import cycles, unusually high coupling).</p>
-            ))}
-        </div>
-      </div>
+
+              {architectureFindings.length > 0 && (
+                <>
+                  <h3 className="evolution-evidence-heading mt-6">Current structural findings</h3>
+                  <ul className="finding-list">
+                    {architectureFindings.map((finding, index) => (
+                      <li key={index} className={`finding-item finding-item-${finding.severity}`}>
+                        <div className="finding-header">
+                          <span className={`finding-severity finding-severity-${finding.severity}`}>
+                            {finding.severity}
+                          </span>
+                          {finding.path && <span className="finding-path">{finding.path}</span>}
+                        </div>
+                        <p className="finding-reason">{finding.reason}</p>
+                        <p className="finding-recommendation">{finding.recommendation}</p>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+            </div>
+          )}
+        </>
+      )}
     </section>
   )
 }
@@ -564,7 +765,8 @@ export function GitHistory({ repositoryId, onAskAbout }) {
             suggestedFiles={hotspotFiles.slice(0, 6).map((file) => file.path)}
             onAskAbout={onAskAbout}
           />
-          <HotspotsAndDriftSection hotspots={hotspotFiles} health={health} onAskAbout={onAskAbout} />
+          <HotspotsSection repositoryId={repositoryId} onAskAbout={onAskAbout} />
+          <ArchitectureDriftSection repositoryId={repositoryId} health={health} onAskAbout={onAskAbout} />
         </>
       )}
     </div>

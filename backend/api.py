@@ -29,7 +29,9 @@ from pydantic import BaseModel
 
 import ai
 import analyzer
+import architecture_drift
 import evolution
+import hotspots
 import repository
 from utils import (
     AIRateLimitExceededError,
@@ -371,6 +373,26 @@ def git_evolution_area_impact(repository_id: str, area_id: str, limit: int = 200
     if impact is None:
         raise HTTPException(status_code=404, detail=f"No evolution area found for id '{area_id}'.")
     return impact
+
+
+@git_router.get("/hotspots", response_model=hotspots.HotspotsResponse)
+def git_hotspots(repository_id: str) -> hotspots.HotspotsResponse:
+    """Code Hotspots -- change frequency + recency (Git) combined with
+    dependency connectivity (the same graph Change Impact/Evolution use),
+    scored deterministically and calibrated against this repository's own
+    averages. See hotspots.py's module docstring."""
+    repository_path = _resolve_repository(repository_id)
+    return hotspots.compute_hotspots(repository_path)
+
+
+@git_router.get("/architecture-drift", response_model=architecture_drift.ArchitectureDriftResponse)
+def git_architecture_drift(repository_id: str) -> architecture_drift.ArchitectureDriftResponse:
+    """Architecture Drift -- the repository's dependency graph reconstructed
+    at real historical commits and compared to today, never a relabeled
+    copy of the current graph. See architecture_drift.py's module
+    docstring for the checkpoint-selection and caching approach."""
+    repository_path = _resolve_repository(repository_id)
+    return architecture_drift.compute_architecture_drift(repository_path)
 
 
 # =====================================================================

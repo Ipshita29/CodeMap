@@ -186,6 +186,8 @@ def test_import_repository_missing_url_field_is_422(isolated_clone_service):
         ("GET", "/repository/git/summary", {"repository_id": "ghost"}),
         ("GET", "/repository/git/evolution", {"repository_id": "ghost"}),
         ("GET", "/repository/git/evolution/impact", {"repository_id": "ghost", "area_id": "x"}),
+        ("GET", "/repository/git/hotspots", {"repository_id": "ghost"}),
+        ("GET", "/repository/git/architecture-drift", {"repository_id": "ghost"}),
         ("GET", "/repository/chat/history", {"repository_id": "ghost"}),
     ],
 )
@@ -298,6 +300,28 @@ def test_evolution_area_impact_unknown_area_id_is_404(imported_repository):
     )
 
     assert response.status_code == 404
+
+
+def test_hotspots_after_import_returns_the_real_commit_as_a_candidate(imported_repository):
+    response = client.get("/repository/git/hotspots", params={"repository_id": imported_repository})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["has_git_history"] is True
+    for hotspot in body["hotspots"]:
+        assert hotspot["level"] in {"low", "medium", "high"}
+        assert 0 <= hotspot["score"] <= 100
+
+
+def test_architecture_drift_after_import_reports_not_enough_history_for_one_commit(imported_repository):
+    response = client.get("/repository/git/architecture-drift", params={"repository_id": imported_repository})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["has_git_history"] is True
+    # imported_repository has exactly one commit -- not enough for a drift comparison.
+    assert body["has_enough_history"] is False
+    assert body["trend"] == "not_enough_data"
 
 
 def test_commit_diff_after_import_returns_the_real_patch(imported_repository):

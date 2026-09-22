@@ -133,6 +133,16 @@ export function fetchAreaImpact(repositoryId, areaId) {
   )
 }
 
+export function fetchHotspots(repositoryId) {
+  return apiRequest(`/repository/git/hotspots?repository_id=${encodeURIComponent(repositoryId)}`, { method: 'GET' })
+}
+
+export function fetchArchitectureDrift(repositoryId) {
+  return apiRequest(`/repository/git/architecture-drift?repository_id=${encodeURIComponent(repositoryId)}`, {
+    method: 'GET',
+  })
+}
+
 export function fetchRepositoryHealth(repositoryId) {
   return apiRequest(`/repository/health?repository_id=${encodeURIComponent(repositoryId)}`, { method: 'GET' })
 }

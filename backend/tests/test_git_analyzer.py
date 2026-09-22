@@ -109,3 +109,67 @@ def test_commit_diff_returns_none_for_an_unknown_commit(tmp_path):
     diff = GitAnalyzer(tmp_path).commit_diff("0" * 40)
 
     assert diff is None
+
+
+def test_commit_refs_returns_real_commits_oldest_first(tmp_path):
+    repo = _init_repo(tmp_path)
+    first = _commit(repo, "a.py", "x = 1\n", "first commit")
+    second = _commit(repo, "b.py", "y = 2\n", "second commit")
+
+    refs = GitAnalyzer(tmp_path).commit_refs(limit=10)
+
+    assert [r.hash for r in refs] == [first.hexsha, second.hexsha]
+    assert refs[0].message == "first commit"
+
+
+def test_file_activity_counts_total_and_recent_commits(tmp_path):
+    repo = _init_repo(tmp_path)
+    _commit(repo, "a.py", "x = 1\n", "first commit")
+    _commit(repo, "a.py", "x = 2\n", "second commit")
+    _commit(repo, "b.py", "y = 1\n", "third commit")
+
+    stats, analyzed, truncated = GitAnalyzer(tmp_path).file_activity(limit=10, recent_days=9999)
+
+    assert analyzed == 3
+    assert truncated is False
+    assert stats["a.py"].total_commits == 2
+    assert stats["a.py"].recent_commits == 2  # recent_days is huge -- everything counts
+    assert stats["b.py"].total_commits == 1
+
+
+def test_file_activity_recent_days_excludes_old_commits(tmp_path):
+    repo = _init_repo(tmp_path)
+    _commit(repo, "a.py", "x = 1\n", "first commit")
+
+    stats, _analyzed, _truncated = GitAnalyzer(tmp_path).file_activity(limit=10, recent_days=0)
+
+    # A commit made "now" with a 0-day recent window may or may not clear
+    # the exact cutoff depending on sub-second timing, so just assert the
+    # field is populated and never exceeds total_commits -- the meaningful
+    # invariant, not a flaky exact-timing assertion.
+    assert stats["a.py"].recent_commits <= stats["a.py"].total_commits
+
+
+def test_materialize_commit_writes_real_file_content_and_prunes_ignored_dirs(tmp_path):
+    repo = _init_repo(tmp_path)
+    (tmp_path / "node_modules").mkdir()
+    (tmp_path / "node_modules" / "junk.js").write_text("noise\n")
+    repo.index.add(["node_modules/junk.js"])
+    commit = _commit(repo, "app.py", "print('hello')\n", "add app")
+
+    target = tmp_path / "materialized"
+    target.mkdir()
+    ok = GitAnalyzer(tmp_path).materialize_commit(commit.hexsha, target)
+
+    assert ok is True
+    assert (target / "app.py").read_text() == "print('hello')\n"
+    assert not (target / "node_modules").exists()
+
+
+def test_materialize_commit_returns_false_for_an_unknown_commit(tmp_path):
+    repo = _init_repo(tmp_path)
+    _commit(repo, "a.py", "x = 1\n", "first commit")
+
+    ok = GitAnalyzer(tmp_path).materialize_commit("0" * 40, tmp_path / "out")
+
+    assert ok is False

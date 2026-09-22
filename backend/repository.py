@@ -705,6 +705,13 @@ MAX_HISTORY_LIMIT = 200
 MAX_FILE_HISTORY_LIMIT = 30
 MAX_ACTIVITY_COMMITS = 300
 MAX_HOTSPOTS = 10
+# materialize_commit() writes a historical commit's tree to disk so
+# hotspots.py/architecture_drift.py can run the exact same RepositoryAnalyzer
+# / CodeIntelligenceAnalyzer pipeline against it as the live repository --
+# these bound that write, the same safety-valve role BINARY_EXTENSIONS/
+# IGNORED_DIRS play for the live FileScanner.
+MAX_MATERIALIZED_FILES = 6_000
+MAX_MATERIALIZED_BLOB_BYTES = 2_000_000
 # evolution.py's Evolution Timeline groups the same bounded window
 # detailed_history() reads -- capped at MAX_HISTORY_LIMIT for the same
 # reason history() is: per-commit stats computation (commit.stats.files)
@@ -731,6 +738,27 @@ def _first_line(message: str) -> str:
 
 def _iso(commit) -> str:
     return commit.committed_datetime.astimezone(timezone.utc).isoformat()
+
+
+@dataclass
+class CommitRef:
+    """Just commit identity + date -- no stats computation -- for callers
+    that need to locate REAL commits at particular points in history
+    (architecture_drift.py's checkpoint selection) without paying for the
+    per-commit diff work history()/detailed_history() do."""
+
+    hash: str
+    short_hash: str
+    date: str
+    message: str
+
+
+@dataclass
+class FileActivityStats:
+    path: str
+    total_commits: int = 0
+    recent_commits: int = 0
+    last_modified: str = ""
 
 
 class GitAnalyzer:
@@ -952,6 +980,112 @@ class GitAnalyzer:
             deletions=sum(f.deletions for f in files),
             files=files,
         )
+
+    def commit_refs(self, limit: int) -> list[CommitRef]:
+        """Every commit's identity + date, oldest first, in the same bounded
+        window history()/detailed_history() read -- the real commits
+        architecture_drift.py picks historical checkpoints from, so a
+        checkpoint labeled "~6 months ago" is always an actual commit that
+        actually existed then, never an invented date."""
+        if not self.available:
+            return []
+        limit = max(1, min(limit, MAX_DETAILED_HISTORY_LIMIT))
+        commits = list(self.repo.iter_commits(max_count=limit))
+        refs = [
+            CommitRef(hash=c.hexsha, short_hash=c.hexsha[:7], date=_iso(c), message=_first_line(c.message))
+            for c in commits
+        ]
+        refs.reverse()
+        return refs
+
+    def file_activity(self, limit: int, recent_days: int) -> tuple[dict[str, FileActivityStats], int, bool]:
+        """One bounded pass over commit history building real per-file
+        change frequency and recency -- the Git evidence hotspots.py scores
+        against. Independent of activity()'s own pass (that one stays
+        untouched -- Git History's existing "Most changed files" list keeps
+        working exactly as it did); both read the same real commit.stats.files
+        GitPython already computes, just for different callers."""
+        if not self.available:
+            return {}, 0, False
+
+        limit = max(1, min(limit, MAX_ACTIVITY_COMMITS))
+        recent_cutoff = datetime.now(timezone.utc) - timedelta(days=recent_days)
+
+        stats: dict[str, FileActivityStats] = {}
+        analyzed = 0
+        truncated = False
+
+        for commit in self.repo.iter_commits(max_count=limit + 1):
+            if analyzed >= limit:
+                truncated = True
+                break
+            analyzed += 1
+            committed_at = commit.committed_datetime.astimezone(timezone.utc)
+            is_recent = committed_at >= recent_cutoff
+            commit_iso = _iso(commit)
+            try:
+                filenames = list(commit.stats.files)
+            except (GitCommandError, ValueError):
+                continue
+            for filename in filenames:
+                entry = stats.get(filename)
+                if entry is None:
+                    # iter_commits() is newest-first, so the first time a
+                    # path is seen here is genuinely its most recent commit.
+                    entry = FileActivityStats(path=filename, last_modified=commit_iso)
+                    stats[filename] = entry
+                entry.total_commits += 1
+                if is_recent:
+                    entry.recent_commits += 1
+
+        return stats, analyzed, truncated
+
+    def materialize_commit(self, commit_hash: str, target_dir: Path) -> bool:
+        """Writes every tracked file at `commit_hash` into `target_dir`,
+        applying the same IGNORED_DIRS pruning the live FileScanner uses --
+        so a historical snapshot analyzed from `target_dir` (see
+        architecture_drift.py) is scanned by the identical rules as the
+        current repository, not a different, incomparable methodology.
+
+        Reads blob content only -- never runs `git checkout`, never touches
+        this repository's working tree or HEAD, so concurrent requests
+        against the live clone are unaffected. Returns False if the commit
+        doesn't resolve in this repository."""
+        if not self.available:
+            return False
+        try:
+            commit = self.repo.commit(commit_hash)
+            tree_items = list(commit.tree.traverse())
+        except (GitCommandError, ValueError, BadName):
+            # commit_hash resolving to a syntactically valid-looking SHA
+            # that doesn't actually exist only surfaces once something
+            # touches the commit object (e.g. .tree) -- see commit_diff()'s
+            # identical handling above.
+            return False
+
+        written = 0
+        for item in tree_items:
+            if written >= MAX_MATERIALIZED_FILES:
+                break
+            if getattr(item, "type", None) != "blob":
+                continue
+            segments = item.path.split("/")
+            if any(segment in IGNORED_DIRS for segment in segments[:-1]):
+                continue
+            if item.size > MAX_MATERIALIZED_BLOB_BYTES:
+                continue
+            try:
+                content = item.data_stream.read()
+            except (GitCommandError, OSError):
+                continue
+            destination = target_dir / item.path
+            try:
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_bytes(content)
+            except OSError:
+                continue
+            written += 1
+        return True
 
 
 # =====================================================================

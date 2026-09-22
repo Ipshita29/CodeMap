@@ -1,53 +1,11 @@
 /* Git History tab */
 
-.overview-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
-  gap: 2rem;
-}
-
-.hotspot-list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-}
-
-.hotspot-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  font-size: 0.8125rem;
-}
-
 .hotspot-path {
   font-family: var(--font-mono);
   color: var(--foreground);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.hotspot-count {
-  color: var(--muted);
-  white-space: nowrap;
-}
-
-.hotspot-row-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.875rem;
-  flex-shrink: 0;
-}
-
-.git-subsection-title {
-  margin: 0 0 0.75rem;
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: var(--muted);
 }
 
 /* Change Impact -- the same risk-badge/impact-report visual language
@@ -469,4 +427,130 @@
   gap: 1rem;
   flex-wrap: wrap;
   font-size: 0.8125rem;
+}
+
+/* Code Hotspots -- ranked, expandable list (see HotspotRow). */
+
+.hotspot-score-list {
+  margin: 0.75rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.hotspot-score-row {
+  border-bottom: 1px solid var(--card-border);
+}
+
+.hotspot-score-row:last-child {
+  border-bottom: none;
+}
+
+.hotspot-score-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  border: none;
+  background: none;
+  padding: 0.625rem 0;
+  color: var(--foreground);
+  cursor: pointer;
+  text-align: left;
+}
+
+.hotspot-score-header svg {
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.hotspot-score-path {
+  font-size: 0.8125rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.hotspot-score-track {
+  width: 6rem;
+  height: 0.375rem;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.hotspot-score-fill {
+  height: 100%;
+  border-radius: 9999px;
+  background: var(--accent);
+}
+
+.hotspot-score-value {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+  width: 1.75rem;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+/* Architecture Drift -- compact checkpoint table + delta chips. */
+
+.drift-table-wrap {
+  margin-top: 0.875rem;
+  overflow-x: auto;
+}
+
+.drift-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.8125rem;
+}
+
+.drift-table th,
+.drift-table td {
+  padding: 0.5rem 0.875rem 0.5rem 0;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.drift-table th:first-child,
+.drift-table td:first-child {
+  text-align: left;
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.drift-table thead th {
+  color: var(--muted);
+  font-weight: 600;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-bottom: 1px solid var(--card-border);
+  padding-bottom: 0.625rem;
+}
+
+.drift-table tbody td {
+  color: var(--foreground);
+  font-family: var(--font-mono);
+}
+
+.drift-deltas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+  margin-top: 1rem;
+  font-size: 0.8125rem;
+  color: var(--foreground);
+}
+
+.drift-delta-chip {
+  white-space: nowrap;
+}
+
+.drift-evidence-toggle {
+  margin-left: 1.25rem;
 }
